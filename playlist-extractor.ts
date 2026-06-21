@@ -66,6 +66,21 @@ interface Song {
 	startTimestamp: string
 }
 
+interface YoutubePageHTML extends Window {
+	ytInitialPlayerResponse: {
+		videoDetails: {
+			shortDescription: string
+		}
+	}
+	ytInitialData: {
+		metadata: {
+			playlistMetadataRenderer: {
+				title: string
+			}
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Constantes de heurística
 // ---------------------------------------------------------------------------
@@ -212,7 +227,7 @@ function durationToSeconds(duration: string): number {
 function sanitizeFilename(name: string): string {
 	return (
 		name
-			.replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
+			.replace(/[<>:"/\\|?*]/g, '')
 			.replace(/\s+/g, ' ')
 			.trim()
 			.slice(0, 120) || 'playlist'
@@ -239,13 +254,20 @@ function parseTitle(raw: string): ParsedTitle {
 	// 1) Featured: feat./ft./featuring en cualquier lugar; with/con sólo dentro de paréntesis.
 	const featRegex =
 		/[([]?\s*(?:feat\.?|ft\.?|featuring)\s+([^)\]\-–—]+?)\s*(?:[)\]]|$|[-–—])/gi
+
 	working = working.replace(featRegex, (_m, names: string) => {
-		splitArtists(names).forEach((a) => featuredArtists.push(a))
+		splitArtists(names).forEach((a) => {
+			featuredArtists.push(a)
+		})
 		return ' '
 	})
 	const featWithRegex = /[([]\s*(?:with|con)\s+([^)\]]+?)\s*[)\]]/gi
+
 	working = working.replace(featWithRegex, (_m, names: string) => {
-		splitArtists(names).forEach((a) => featuredArtists.push(a))
+		splitArtists(names).forEach((a) => {
+			featuredArtists.push(a)
+		})
+		return ' '
 	})
 
 	// 2) mixType: buscar palabra clave; preferir el contenido del paréntesis/corchete que la contiene.
@@ -403,7 +425,7 @@ async function fetchTracklist(page: Page, videoId: string): Promise<Track[]> {
 		await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 })
 		await sleep(1200)
 		const description = await page.evaluate(() => {
-			const w = window as any
+			const w = window as unknown as YoutubePageHTML
 			const fromPlayer =
 				w?.ytInitialPlayerResponse?.videoDetails?.shortDescription
 			if (fromPlayer) return fromPlayer as string
@@ -508,7 +530,7 @@ async function scrapePlaylist(
 	}
 
 	const title = await page.evaluate(() => {
-		const w = window as any
+		const w = window as unknown as YoutubePageHTML
 		const fromData = w?.ytInitialData?.metadata?.playlistMetadataRenderer?.title
 		if (fromData) return fromData as string
 		const h1 = document.querySelector(
@@ -619,7 +641,7 @@ function videoToSong(v: PlaylistVideo): Song {
 	const parsed = parseTitle(v.rawTitle)
 	return {
 		position: String(v.index),
-		artists: parsed.artists,
+		artists: parsed.artists ?? v.channel,
 		featuredArtists: parsed.featuredArtists,
 		songTitle: parsed.songTitle,
 		mixType: parsed.mixType,
@@ -644,7 +666,7 @@ function trackToSong(v: PlaylistVideo, track: Track): Song {
 		: v.url
 	return {
 		position: `${v.index}.${track.trackIndex}`,
-		artists: parsed.artists,
+		artists: parsed.artists ?? v.channel,
 		featuredArtists: parsed.featuredArtists,
 		songTitle: parsed.songTitle,
 		mixType: parsed.mixType,
