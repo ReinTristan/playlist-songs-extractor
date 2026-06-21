@@ -1,0 +1,26 @@
+{
+	"name": "playlist-extractor",
+	"version": "1.0.0",
+	"main": "index.js",
+	"type": "module",
+	"scripts": {
+		"start": "node playlist-extractor.ts",
+		"extract": "node playlist-extractor.ts",
+		"start:bun": "bun playlist-extractor.ts",
+		"extract:bun": "bun playlist-extractor.ts",
+		"test": "node --test tests/*.test.ts"
+	},
+	"keywords": [],
+	"author": "ReinTristan (https://github.com/ReinTristan)",
+	"license": "MIT",
+	"description": "",
+	"devDependencies": {
+		"@types/node": "24.13.0",
+		"playwright": "^1.57.0"
+	},
+	"dependencies": {
+		"@biomejs/biome": "^2.5.0",
+		"dayjs": "^1.11.19",
+		"exceljs": "^4.4.0"
+	}
+}
