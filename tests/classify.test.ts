@@ -4,7 +4,7 @@ import {
 	classifyVideoType,
 	durationToSeconds,
 	sanitizeFilename,
-} from '../playlist-extractor.ts'
+} from '../src/extractor.ts'
 
 describe('durationToSeconds', () => {
 	it('convierte mm:ss', () => assert.equal(durationToSeconds('3:30'), 210))

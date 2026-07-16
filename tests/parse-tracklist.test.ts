@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { parseTracklist } from '../playlist-extractor.ts'
+import { parseTracklist } from '../src/extractor.ts'
 
 describe('parseTracklist', () => {
 	it('parsea un tracklist basado en timestamps', () => {
