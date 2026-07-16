@@ -63,7 +63,7 @@ async function editUrl(config: ExtractConfig): Promise<void> {
 		message: 'URL o ID de la playlist de YouTube',
 		placeholder: 'https://www.youtube.com/playlist?list=...',
 		initialValue: config.fullUrl,
-		validate: (v) => (v.trim() ? undefined : 'Ingresa una URL o ID'),
+		validate: (v) => (v?.trim() ? undefined : 'Ingresa una URL o ID'),
 	})
 	if (!p.isCancel(raw)) config.fullUrl = normalizeUrl(raw)
 }
@@ -75,8 +75,8 @@ async function editMax(config: ExtractConfig): Promise<void> {
 			? String(config.maxVideos)
 			: '',
 		validate: (v) => {
-			const t = v.trim()
-			if (t === '' || /^todos$/i.test(t)) return undefined
+			const t = v?.trim()
+			if (!t || /^todos$/i.test(t)) return undefined
 			return /^\d+$/.test(t) && Number(t) >= 1
 				? undefined
 				: 'Ingresa un entero ≥ 1, o deja vacío para todos'
@@ -190,6 +190,9 @@ async function interactiveMenu(): Promise<void> {
 					p.log.error(`Error en la extracción: ${(err as Error).message}`)
 				}
 				break
+			}
+			default: {
+				p.log.warn('Selecciona una opcion valida')
 			}
 		}
 	}
