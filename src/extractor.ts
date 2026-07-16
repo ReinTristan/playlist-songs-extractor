@@ -1,16 +1,15 @@
 /**
- * Extractor de canciones de playlists de YouTube (Parte 1 — Scraper).
+ * Extractor de canciones de playlists de YouTube (core / scraper).
  *
- * Uso:
- *   node playlist-extractor.ts "https://www.youtube.com/playlist?list=..."
- *   bun  playlist-extractor.ts "https://www.youtube.com/playlist?list=..."
+ * Este módulo expone la lógica de extracción (`runExtraction`) y las funciones
+ * puras de parseo. El arranque (CLI interactivo y modo argv) vive en `cli.ts`.
  *
- * Genera output/<playlist>_<timestamp local>/ con playlist.json, playlist.csv y playlist.xlsx
+ * Genera output/<playlist>_<timestamp local>/ con los formatos seleccionados
+ * (playlist.json, playlist.csv, playlist.xlsx).
  */
 
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import dayjs from 'dayjs'
 import ExcelJS from 'exceljs'
 import { type Browser, chromium, type Page } from 'playwright'
@@ -47,7 +46,7 @@ interface ParsedTitle {
 	genres: string[]
 }
 
-interface Song {
+export interface Song {
 	position: string
 	artists: string[]
 	featuredArtists: string[]
@@ -64,6 +63,18 @@ interface Song {
 	thumbnail: string
 	parentVideoId: string
 	startTimestamp: string
+}
+
+/** Formatos de archivo que puede generar la extracción. */
+export type Format = 'json' | 'csv' | 'xlsx'
+
+/** Configuración de una extracción, ajustable desde el CLI. */
+export interface ExtractConfig {
+	fullUrl: string
+	maxVideos: number // Infinity = todos
+	formats: Set<Format>
+	expandAlbums: boolean
+	columns: Set<keyof Song> // subconjunto de las keys de COLUMNS
 }
 
 interface YoutubePageHTML extends Window {
@@ -747,7 +758,7 @@ function buildSongRows(
 // Exportadores
 // ---------------------------------------------------------------------------
 
-const COLUMNS: { header: string; key: keyof Song; width: number }[] = [
+export const COLUMNS: { header: string; key: keyof Song; width: number }[] = [
 	{ header: 'Posición', key: 'position', width: 10 },
 	{ header: 'Artistas', key: 'artists', width: 28 },
 	{ header: 'Featured', key: 'featuredArtists', width: 22 },
@@ -766,81 +777,96 @@ const COLUMNS: { header: string; key: keyof Song; width: number }[] = [
 	{ header: 'Timestamp', key: 'startTimestamp', width: 12 },
 ]
 
-function flattenForTable(song: Song): Record<string, string> {
+type Column = (typeof COLUMNS)[number]
+
+function flattenForTable(
+	song: Song,
+	columns: Column[],
+): Record<string, string> {
 	const row: Record<string, string> = {}
-	for (const col of COLUMNS) {
+	for (const col of columns) {
 		const value = song[col.key]
 		row[col.key] = Array.isArray(value) ? value.join('; ') : String(value ?? '')
 	}
 	return row
 }
 
+/** Proyecta una canción a solo las keys seleccionadas (para el JSON). */
+function projectSong(song: Song, columns: Column[]): Partial<Song> {
+	const out: Partial<Song> = {}
+	for (const col of columns) {
+		;(out[col.key] as Song[keyof Song]) = song[col.key]
+	}
+	return out
+}
+
 async function writeOutputs({
 	songs,
 	outDir,
 	playListName,
+	formats,
+	columns,
 }: {
 	songs: Song[]
 	outDir: string
 	playListName: string
+	formats: Set<Format>
+	columns: Set<keyof Song>
 }): Promise<void> {
+	// Columnas elegidas, preservando el orden canónico de COLUMNS.
+	const selectedColumns = COLUMNS.filter((c) => columns.has(c.key))
 	await mkdir(outDir, { recursive: true })
 
-	// JSON (arrays nativos).
-	await writeFile(
-		path.join(outDir, 'playlist.json'),
-		JSON.stringify(
-			{
-				name: playListName,
-				total: songs.length,
-				songs,
-			},
-			null,
-			2,
-		),
-		'utf8',
-	)
+	// JSON (arrays nativos), proyectado a las columnas elegidas.
+	if (formats.has('json')) {
+		await writeFile(
+			path.join(outDir, 'playlist.json'),
+			JSON.stringify(
+				{
+					name: playListName,
+					total: songs.length,
+					songs: songs.map((s) => projectSong(s, selectedColumns)),
+				},
+				null,
+				2,
+			),
+			'utf8',
+		)
+	}
 
 	// Workbook compartido para XLSX y CSV (arrays como texto).
-	const wb = new ExcelJS.Workbook()
-	const ws = wb.addWorksheet('Canciones')
-	ws.columns = COLUMNS.map((c) => ({
-		header: c.header,
-		key: c.key as string,
-		width: c.width,
-	}))
-	ws.addRows(songs.map(flattenForTable))
-	ws.getRow(1).font = { bold: true }
-	ws.views = [{ state: 'frozen', ySplit: 1 }]
+	if (formats.has('xlsx') || formats.has('csv')) {
+		const wb = new ExcelJS.Workbook()
+		const ws = wb.addWorksheet('Canciones')
+		ws.columns = selectedColumns.map((c) => ({
+			header: c.header,
+			key: c.key as string,
+			width: c.width,
+		}))
+		ws.addRows(songs.map((s) => flattenForTable(s, selectedColumns)))
+		ws.getRow(1).font = { bold: true }
+		ws.views = [{ state: 'frozen', ySplit: 1 }]
 
-	await wb.xlsx.writeFile(path.join(outDir, 'playlist.xlsx'))
-	await wb.csv.writeFile(path.join(outDir, 'playlist.csv'))
-}
-
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
-
-function parseArgs(): { fullUrl: string; maxVideos: number } {
-	const url = process.argv[2]
-	const isFullUrl = /youtube\.com|youtu\.be/.test(url)
-	if (!url) {
-		console.error(
-			'Uso: node playlist-extractor.ts "<url de la playlist de YouTube>" [maxVideos]',
-		)
-		process.exit(1)
+		if (formats.has('xlsx'))
+			await wb.xlsx.writeFile(path.join(outDir, 'playlist.xlsx'))
+		if (formats.has('csv'))
+			await wb.csv.writeFile(path.join(outDir, 'playlist.csv'))
 	}
-	const fullUrl = isFullUrl ? url : `https://youtube.com/playlist?list=${url}`
-	const limitArg = process.argv[3] || process.env.PLAYLIST_MAX || ''
-	const maxVideos =
-		limitArg && Number.isFinite(Number(limitArg)) ? Number(limitArg) : Infinity
-
-	return { fullUrl, maxVideos }
 }
 
-async function main(): Promise<void> {
-	const { fullUrl, maxVideos } = parseArgs()
-	console.log('fullUrl', fullUrl)
+// ---------------------------------------------------------------------------
+// Extracción (orquestación)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ejecuta una extracción completa según `config`: abre el navegador, lee la
+ * playlist, (opcionalmente) expande álbumes/mixes y escribe los archivos.
+ * Devuelve el número de canciones y la carpeta de salida.
+ */
+export async function runExtraction(
+	config: ExtractConfig,
+): Promise<{ count: number; outDir: string }> {
+	const { fullUrl, maxVideos, formats, expandAlbums, columns } = config
 	let browser: Browser | null = null
 
 	try {
@@ -861,8 +887,8 @@ async function main(): Promise<void> {
 		)
 		console.log(`  ✓ ${videos.length} videos encontrados en "${title}"`)
 
-		// Tracklists de candidatos (álbumes/mixes).
-		const candidates = videos.filter((v) => v.isCandidate)
+		// Tracklists de candidatos (álbumes/mixes), solo si está habilitado.
+		const candidates = expandAlbums ? videos.filter((v) => v.isCandidate) : []
 		const tracklists = new Map<string, Track[]>()
 		if (candidates.length > 0) {
 			console.log(
@@ -897,36 +923,22 @@ async function main(): Promise<void> {
 			'output',
 			`${sanitizeFilename(playListName)}_${stamp}`,
 		)
-		await writeOutputs({ songs, outDir, playListName })
+		await writeOutputs({ songs, outDir, playListName, formats, columns })
 
+		const files = [...formats].map((f) => `playlist.${f}`).join(', ')
 		console.log(`\n✅ Listo: ${songs.length} canciones exportadas`)
-		console.log(
-			`   ${path.relative(process.cwd(), outDir)}/  (playlist.json, playlist.csv, playlist.xlsx)`,
-		)
+		console.log(`   ${path.relative(process.cwd(), outDir)}/  (${files})`)
+		return { count: songs.length, outDir }
 	} finally {
 		if (browser) await browser.close()
 	}
 }
 
-// Exporta funciones puras para pruebas; ejecuta main() sólo si se invoca directamente.
+// Exporta funciones puras para pruebas.
 export {
 	classifyVideoType,
 	durationToSeconds,
 	parseTitle,
 	parseTracklist,
 	sanitizeFilename,
-}
-
-const meta = import.meta as ImportMeta & { main?: boolean }
-const runDirectly =
-	typeof meta.main === 'boolean'
-		? meta.main // Bun
-		: process.argv[1] !== undefined &&
-			process.argv[1] === fileURLToPath(import.meta.url) // Node
-
-if (runDirectly) {
-	main().catch((err) => {
-		console.error('✖ Error:', err)
-		process.exit(1)
-	})
 }
