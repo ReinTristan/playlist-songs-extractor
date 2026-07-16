@@ -19,14 +19,38 @@ pnpm exec playwright install chromium
 
 ## Usage
 
-From the project folder:
+### Interactive mode (recommended)
+
+Run the CLI without arguments to open an interactive menu:
 
 ```bash
 # With Bun (faster)
-bun playlist-extractor.ts "PLAYLIST_URL"
+bun src/cli.ts
 
 # With Node
-node playlist-extractor.ts "PLAYLIST_URL"
+node src/cli.ts
+```
+
+The menu lets you configure each option and then choose **▶ Extract**. After a run it
+returns to the menu **keeping your settings**, so you can process several playlists in a
+row by just changing the URL. Configurable options:
+
+- **Playlist URL** — full URL or a bare list ID.
+- **Video limit** — process all videos or only the first N.
+- **Output formats** — any combination of JSON, CSV, and Excel (XLSX).
+- **Expand albums/mixes** — toggle expanding long albums/mixes into individual songs.
+- **Columns to save** — pick exactly which columns/fields are written to the files.
+
+### Quick mode (non-interactive)
+
+Pass the URL as an argument to run once and exit, using default settings:
+
+```bash
+# With Bun (faster)
+bun src/cli.ts "PLAYLIST_URL"
+
+# With Node
+node src/cli.ts "PLAYLIST_URL"
 ```
 
 > The quotes `"..."` matter: YouTube URLs contain `&` and `?`, which the shell would
@@ -39,17 +63,17 @@ pnpm extract:bun -- "URL"   # Bun
 pnpm extract -- "URL"       # Node
 ```
 
-### Limit the number of videos (handy for quick tests)
+#### Limit the number of videos (handy for quick tests)
 
 ```bash
-bun playlist-extractor.ts "URL" 10                 # only the first 10
-PLAYLIST_MAX=10 bun playlist-extractor.ts "URL"    # equivalent via environment variable
+bun src/cli.ts "URL" 10                 # only the first 10
+PLAYLIST_MAX=10 bun src/cli.ts "URL"    # equivalent via environment variable
 ```
 
-### Full example
+#### Full example
 
 ```bash
-bun playlist-extractor.ts "https://www.youtube.com/playlist?list=PLRBp0Fe2GpgnIh0AiYKh7o7HnYAej-5ph" 5
+bun src/cli.ts "https://www.youtube.com/playlist?list=PLRBp0Fe2GpgnIh0AiYKh7o7HnYAej-5ph" 5
 ```
 
 ## Output
@@ -98,5 +122,5 @@ Uses Node's built-in test runner (`node:test`) against the parsing functions in 
 
 - Title and tracklist parsing is **best-effort**: it depends on how each channel writes its
   titles, which is why the `rawTitle` is always kept for manual review.
-- YouTube's DOM selectors may change over time. `debug-dom.ts` is a probe to inspect the
+- YouTube's DOM selectors may change over time. `src/debug-dom.ts` is a probe to inspect the
   page's current structure if something stops working.
