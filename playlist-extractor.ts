@@ -104,7 +104,8 @@ const MIX_KEYWORDS = [
 	'continuous mix',
 	'podcast',
 	'live set',
-	'mix',
+	// Nota: no incluir 'mix' suelto: sobre-clasifica temas de una sola canción
+	// como "(Extended Mix)", "(VIP Mix)", "(Original Mix)" (falsos DJ sets).
 ]
 
 /** Palabras que indican un tipo de mezcla (no la canción original). */
@@ -252,8 +253,11 @@ function parseTitle(raw: string): ParsedTitle {
 	let mixType = 'original'
 
 	// 1) Featured: feat./ft./featuring en cualquier lugar; with/con sólo dentro de paréntesis.
+	//    El terminador es un lookahead para NO consumir el guion separador principal:
+	//    en "Artista feat. Invitado - Canción" el " - " debe sobrevivir al paso 5.
+	//    Se tolera "feat."/"ft." pegado al nombre sin espacio ("feat.Ddark").
 	const featRegex =
-		/[([]?\s*(?:feat\.?|ft\.?|featuring)\s+([^)\]\-–—]+?)\s*(?:[)\]]|$|[-–—])/gi
+		/[([]?\s*\b(?:feat|ft|featuring)\b\.?\s*([^)\]\-–—]+?)\s*(?:[)\]]|(?=[-–—]|$))/gi
 
 	working = working.replace(featRegex, (_m, names: string) => {
 		splitArtists(names).forEach((a) => {
@@ -369,6 +373,9 @@ function parseTitle(raw: string): ParsedTitle {
 // Tracklist (descripción de álbumes/mixes)
 // ---------------------------------------------------------------------------
 
+/** Timestamp al inicio del texto de una pista, con paréntesis/guion opcionales. */
+const LEADING_TS = /^[([]?((?:\d{1,2}:)?\d{1,2}:\d{2})[)\]]?\s*[-–—.]?\s*/
+
 function parseTracklist(description: string): Track[] {
 	if (!description) return []
 	const lines = description
@@ -388,6 +395,7 @@ function parseTracklist(description: string): Track[] {
 			.replace(/[\s\-–—.([]+$/, '')
 			.trim()
 		rest = rest.replace(/^\d{1,2}\s*[.)-]\s*/, '') // quitar numeración inicial sobrante
+		rest = rest.replace(LEADING_TS, '') // quitar timestamp residual (p. ej. rangos "0:00 - 5:36 …")
 		if (rest.length >= 2) {
 			tsTracks.push({
 				trackIndex: tsTracks.length + 1,
@@ -403,13 +411,28 @@ function parseTracklist(description: string): Track[] {
 	for (const line of lines) {
 		const m = line.match(/^(\d{1,2})\s*[.)-]\s+(.+)$/)
 		if (!m) continue
-		const rest = m[2]
-			.replace(/\s*[([]?(?:\d{1,2}:)?\d{1,2}:\d{2}[)\]]?\s*$/, '')
-			.trim()
+		// Puede venir un timestamp al inicio ("1. 05:36 Artista - Título") o al final;
+		// se captura el que aparezca y se limpia del título.
+		let rest = m[2]
+		let startTimestamp = ''
+		const leadTs = rest.match(/^\s*[([]?((?:\d{1,2}:)?\d{1,2}:\d{2})[)\]]?\s*/)
+		if (leadTs) {
+			startTimestamp = leadTs[1]
+			rest = rest.slice(leadTs[0].length)
+		} else {
+			const tailTs = rest.match(
+				/\s*[([]?((?:\d{1,2}:)?\d{1,2}:\d{2})[)\]]?\s*$/,
+			)
+			if (tailTs) {
+				startTimestamp = tailTs[1]
+				rest = rest.slice(0, rest.length - tailTs[0].length)
+			}
+		}
+		rest = rest.trim()
 		if (rest.length >= 2) {
 			numTracks.push({
 				trackIndex: numTracks.length + 1,
-				startTimestamp: '',
+				startTimestamp,
 				rawTrackTitle: rest,
 			})
 		}
@@ -506,7 +529,7 @@ async function scrapePlaylist(
 	page: Page,
 	url: string,
 	maxVideos = Infinity,
-): Promise<{ title: string; videos: PlaylistVideo[] }> {
+): Promise<{ title: string; videos: PlaylistVideo[]; channel: string }> {
 	await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
 	await dismissConsent(page)
 	await page
@@ -529,17 +552,31 @@ async function scrapePlaylist(
 		await sleep(700)
 	}
 
-	const title = await page.evaluate(() => {
+	const { title, channel } = await page.evaluate(() => {
 		const w = window as unknown as YoutubePageHTML
 		const fromData = w?.ytInitialData?.metadata?.playlistMetadataRenderer?.title
-		if (fromData) return fromData as string
 		const h1 = document.querySelector(
 			'yt-dynamic-sizing-formatted-string, #title yt-formatted-string, h1 .ytPageHeaderViewModelTitle',
 		)
-		if (h1) return (h1 as HTMLElement).innerText
-		return document.title.replace(/\s*-\s*YouTube\s*$/, '')
-	})
+		const title =
+			(fromData as string) ||
+			(h1 ? (h1 as HTMLElement).innerText : '') ||
+			document.title.replace(/\s*-\s*YouTube\s*$/, '')
 
+		// Canal: primer enlace a un canal dentro del header de la playlist.
+		const header =
+			document.querySelector(
+				'yt-page-header-renderer, ytd-playlist-header-renderer',
+			) || document.body
+		const ownerAnchor = Array.from(header.querySelectorAll('a')).find((a) =>
+			/\/(@|channel\/|c\/|user\/)/.test(
+				(a as HTMLAnchorElement).getAttribute('href') || '',
+			),
+		) as HTMLAnchorElement | undefined
+		const channel = (ownerAnchor?.innerText || '').trim()
+
+		return { title, channel }
+	})
 	const videos: PlaylistVideo[] = await page.evaluate(() => {
 		const items = Array.from(document.querySelectorAll('yt-lockup-view-model'))
 		return items.map((item, i) => {
@@ -567,7 +604,9 @@ async function scrapePlaylist(
 			).map((b) => (b as HTMLElement).innerText.trim())
 			const duration = badges.find((b) => /^\d{1,2}(:\d{2})+$/.test(b)) || ''
 			const img = item.querySelector('img') as HTMLImageElement | null
-			const thumbnail = img?.src || img?.getAttribute('data-thumb') || ''
+			const thumbnail = videoId
+				? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+				: img?.src || img?.getAttribute('data-thumb') || ''
 			const lowTitle = rawTitle.toLowerCase()
 			const unavailable =
 				!videoId ||
@@ -610,7 +649,11 @@ async function scrapePlaylist(
 		}
 	}
 
-	return { title: title || 'playlist', videos: limited }
+	return {
+		title: title || 'playlist',
+		videos: limited,
+		channel: channel || 'Channel',
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -641,7 +684,7 @@ function videoToSong(v: PlaylistVideo): Song {
 	const parsed = parseTitle(v.rawTitle)
 	return {
 		position: String(v.index),
-		artists: parsed.artists ?? v.channel,
+		artists: parsed.artists.length > 0 ? parsed.artists : [v.channel],
 		featuredArtists: parsed.featuredArtists,
 		songTitle: parsed.songTitle,
 		mixType: parsed.mixType,
@@ -666,7 +709,7 @@ function trackToSong(v: PlaylistVideo, track: Track): Song {
 		: v.url
 	return {
 		position: `${v.index}.${track.trackIndex}`,
-		artists: parsed.artists ?? v.channel,
+		artists: parsed.artists,
 		featuredArtists: parsed.featuredArtists,
 		songTitle: parsed.songTitle,
 		mixType: parsed.mixType,
@@ -732,13 +775,29 @@ function flattenForTable(song: Song): Record<string, string> {
 	return row
 }
 
-async function writeOutputs(songs: Song[], outDir: string): Promise<void> {
+async function writeOutputs({
+	songs,
+	outDir,
+	playListName,
+}: {
+	songs: Song[]
+	outDir: string
+	playListName: string
+}): Promise<void> {
 	await mkdir(outDir, { recursive: true })
 
 	// JSON (arrays nativos).
 	await writeFile(
 		path.join(outDir, 'playlist.json'),
-		JSON.stringify(songs, null, 2),
+		JSON.stringify(
+			{
+				name: playListName,
+				total: songs.length,
+				songs,
+			},
+			null,
+			2,
+		),
 		'utf8',
 	)
 
@@ -762,22 +821,26 @@ async function writeOutputs(songs: Song[], outDir: string): Promise<void> {
 // Main
 // ---------------------------------------------------------------------------
 
-function parseArgs(): { url: string; maxVideos: number } {
+function parseArgs(): { fullUrl: string; maxVideos: number } {
 	const url = process.argv[2]
-	if (!url || !/youtube\.com|youtu\.be/.test(url)) {
+	const isFullUrl = /youtube\.com|youtu\.be/.test(url)
+	if (!url) {
 		console.error(
 			'Uso: node playlist-extractor.ts "<url de la playlist de YouTube>" [maxVideos]',
 		)
 		process.exit(1)
 	}
+	const fullUrl = isFullUrl ? url : `https://youtube.com/playlist?list=${url}`
 	const limitArg = process.argv[3] || process.env.PLAYLIST_MAX || ''
 	const maxVideos =
 		limitArg && Number.isFinite(Number(limitArg)) ? Number(limitArg) : Infinity
-	return { url, maxVideos }
+
+	return { fullUrl, maxVideos }
 }
 
 async function main(): Promise<void> {
-	const { url, maxVideos } = parseArgs()
+	const { fullUrl, maxVideos } = parseArgs()
+	console.log('fullUrl', fullUrl)
 	let browser: Browser | null = null
 
 	try {
@@ -791,7 +854,11 @@ async function main(): Promise<void> {
 		const page = await context.newPage()
 
 		console.log('▶ Leyendo la playlist…')
-		const { title, videos } = await scrapePlaylist(page, url, maxVideos)
+		const { title, videos, channel } = await scrapePlaylist(
+			page,
+			fullUrl,
+			maxVideos,
+		)
 		console.log(`  ✓ ${videos.length} videos encontrados en "${title}"`)
 
 		// Tracklists de candidatos (álbumes/mixes).
@@ -818,14 +885,19 @@ async function main(): Promise<void> {
 		}
 
 		const songs = buildSongRows(videos, tracklists)
-
 		const stamp = dayjs().format('YYYY-MM-DD_HH-mm-ss')
+		// Si el título es genérico (p. ej. "Videos"), el canal alcanza para
+		// reconocer la carpeta; si no, se antepone el canal al título.
+		const genericTitle = /^(videos|playlist|mix|favoritos|favorites)$/i.test(
+			title.trim(),
+		)
+		const playListName = genericTitle ? channel : `${channel}-${title}`
 		const outDir = path.join(
 			process.cwd(),
 			'output',
-			`${sanitizeFilename(title)}_${stamp}`,
+			`${sanitizeFilename(playListName)}_${stamp}`,
 		)
-		await writeOutputs(songs, outDir)
+		await writeOutputs({ songs, outDir, playListName })
 
 		console.log(`\n✅ Listo: ${songs.length} canciones exportadas`)
 		console.log(
