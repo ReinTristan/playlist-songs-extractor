@@ -128,8 +128,11 @@ async function editColumns(config: ExtractConfig): Promise<void> {
 	config.columns = [...kept, ...added]
 }
 
-const columnLabel = (k: keyof Song): string =>
-	COLUMNS.find((c) => c.key === k)!.header
+const columnLabel = (k: keyof Song): string => {
+	const label = COLUMNS.find((c) => c.key === k)
+	//Return first label as default
+	return label?.header ?? COLUMNS[0].header
+}
 
 async function editColumnOrder(config: ExtractConfig): Promise<void> {
 	const order = [...config.columns]
