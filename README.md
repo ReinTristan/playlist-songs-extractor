@@ -11,6 +11,7 @@ opens its page, reads the tracklist from the description, and expands it into in
 
 - **Node 24+** (runs `.ts` files directly) or **Bun**.
 - Dependencies installed and the Playwright browser downloaded:
+- pnpm for package manager as listed in package.json.
 
 ```bash
 pnpm install
@@ -90,25 +91,45 @@ output/My Playlist_2026-06-19_03-40-13/
 
 ### Fields per song
 
-| Field             | Description                                                            |
-| ----------------- | --------------------------------------------------------------------- |
-| `position`        | Position in the playlist (`5`, or `5.1`, `5.2`… for album tracks)     |
-| `artists`         | Main artists (split by `,`, `&`, `x`, `vs`)                           |
-| `featuredArtists` | Featured artists (`feat.`, `ft.`, `featuring`, `with`)                |
-| `songTitle`       | Cleaned-up song name                                                  |
-| `mixType`         | `original`, or `remix` / `bootleg` / `edit`… when applicable          |
-| `genres`          | Genre(s) detected in the title (empty if none)                        |
-| `rawTitle`        | Original, unprocessed title                                           |
-| `channel`         | Video channel                                                         |
-| `videoType`       | `single`, `album`, `mix`, or `unknown`                                |
-| `availability`    | `available` or `unavailable` (private/deleted)                        |
-| `duration`        | Duration shown in the playlist                                        |
-| `videoId`, `url`, `thumbnail` | Video identifiers                                         |
-| `parentVideoId`   | Parent video, only on tracks expanded from an album/mix               |
-| `startTimestamp`  | Timestamp of the track within the album/mix (if available)            |
+| Field                         | Description                                                       |
+| ----------------------------- | ----------------------------------------------------------------- |
+| `position`                    | Position in the playlist (`5`, or `5.1`, `5.2`… for album tracks) |
+| `artists`                     | Main artists (split by `,`, `&`, `x`, `vs`)                       |
+| `featuredArtists`             | Featured artists (`feat.`, `ft.`, `featuring`, `with`)            |
+| `songTitle`                   | Cleaned-up song name                                              |
+| `mixType`                     | `original`, or `remix` / `bootleg` / `edit`… when applicable      |
+| `genres`                      | Genre(s) detected in the title (empty if none)                    |
+| `rawTitle`                    | Original, unprocessed title                                       |
+| `channel`                     | Video channel                                                     |
+| `videoType`                   | `single`, `album`, `mix`, or `unknown`                            |
+| `availability`                | `available` or `unavailable` (private/deleted)                    |
+| `duration`                    | Duration shown in the playlist                                    |
+| `videoId`, `url`, `thumbnail` | Video identifiers                                                 |
+| `parentVideoId`               | Parent video, only on tracks expanded from an album/mix           |
+| `startTimestamp`              | Timestamp of the track within the album/mix (if available)        |
 
 > Multi-valued fields (`artists`, `featuredArtists`, `genres`) are exported as an **array** in
 > JSON and as **text separated by `;`** in CSV and Excel.
+
+### JSON shape
+
+`playlist.json` is a wrapper object (not a flat array of songs):
+
+```json
+{
+	"name": "Channel-My Playlist",
+	"total": 42,
+	"songs": [
+		{
+			"position": "1",
+			"artists": ["Artist"],
+			"songTitle": "Song"
+		}
+	]
+}
+```
+
+Each entry in `songs` contains only the columns selected for the run.
 
 ## Tests
 
@@ -124,3 +145,9 @@ Uses Node's built-in test runner (`node:test`) against the parsing functions in 
   titles, which is why the `rawTitle` is always kept for manual review.
 - YouTube's DOM selectors may change over time. `src/debug-dom.ts` is a probe to inspect the
   page's current structure if something stops working.
+- For Testing you can use this playlist urls (limited to 150 songs to not overload the tests):
+
+| Channel      | Playlist URL id            |
+| ------------ | -------------------------- |
+| Galaxy Music | UULFIKF1msqN7lW9gplsifOPkQ |
+| xKito Music  | UULFMOgdURr7d8pOVlc-alkfRg |
