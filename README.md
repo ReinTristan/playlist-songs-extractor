@@ -1,5 +1,7 @@
 # Playlist Extractor
 
+Made with ❤️ with the help of baker claude.
+
 Extracts songs from YouTube playlists. It uses web scraping with Playwright to get the
 ordered list of songs from a playlist and exports it to **JSON, CSV, and Excel**.
 
