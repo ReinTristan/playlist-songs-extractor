@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { type ExtractConfig, runExtraction } from '../src/extractor.ts'
+import { runExtraction } from '../src/extractor.ts'
+import type { ExtractConfig } from '../src/types.ts'
 
 function baseConfig(): ExtractConfig {
 	return {
