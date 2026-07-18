@@ -13,7 +13,13 @@ await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
 await new Promise((r) => setTimeout(r, 4000))
 
 const info = await page.evaluate(() => {
-	const item = document.querySelectorAll(
+	// Igual que en scrapePlaylist: limitar al primer "item-section-renderer"
+	// (la playlist real) para no inspeccionar tarjetas de recomendados.
+	const section =
+		document.querySelector('yt-item-section-renderer') ||
+		document.querySelector('ytd-item-section-renderer')
+	const root = section ?? document
+	const item = root.querySelectorAll(
 		'yt-lockup-view-model',
 	)[1] as HTMLElement | null
 	const probe = (sel: string) => {

@@ -360,8 +360,18 @@ async function scrapePlaylist(
 ): Promise<{ title: string; videos: PlaylistVideo[]; channel: string }> {
 	await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
 	await dismissConsent(page)
+	// La página de una playlist agrupa su contenido en varios
+	// "item-section-renderer": el primero es la playlist en sí, los
+	// siguientes son secciones de videos/playlists recomendados que YouTube
+	// agrega debajo. Todo lo que sigue se limita a ese primer contenedor
+	// para no arrastrar esos falsos positivos.
+	const playlistSection = () =>
+		page.locator('yt-item-section-renderer, ytd-item-section-renderer').first()
 	await page
-		.waitForSelector('yt-lockup-view-model', { timeout: 30000 })
+		.waitForSelector(
+			'yt-item-section-renderer yt-lockup-view-model, ytd-item-section-renderer yt-lockup-view-model',
+			{ timeout: 30000 },
+		)
 		.catch(() => {})
 
 	// Scroll incremental hasta que el número de items se estabilice (lazy load),
@@ -369,7 +379,9 @@ async function scrapePlaylist(
 	let stable = 0
 	let lastCount = 0
 	for (let i = 0; i < 400 && stable < 3; i++) {
-		const count = await page.locator('yt-lockup-view-model').count()
+		const count = await playlistSection()
+			.locator('yt-lockup-view-model')
+			.count()
 		if (count >= maxVideos) break
 		if (count === lastCount) stable++
 		else stable = 0
@@ -408,7 +420,15 @@ async function scrapePlaylist(
 	})
 
 	const videos: PlaylistVideo[] = await page.evaluate(() => {
-		const items = Array.from(document.querySelectorAll('yt-lockup-view-model'))
+		// El primer "item-section-renderer" es la playlist real; los que le
+		// siguen son secciones de recomendados que no deben incluirse. Si no se
+		// encuentra ninguno (cambio de markup de YouTube), se cae al documento
+		// completo para no romper la extracción.
+		const section =
+			document.querySelector('yt-item-section-renderer') ||
+			document.querySelector('ytd-item-section-renderer')
+		const root = section ?? document
+		const items = Array.from(root.querySelectorAll('yt-lockup-view-model'))
 		return items.map((item, i) => {
 			const titleEl = item.querySelector('h3 a') as HTMLAnchorElement | null
 			const rawTitle = (
