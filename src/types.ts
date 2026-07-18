@@ -71,7 +71,7 @@ export interface ExtractConfig {
 	maxVideos: number // Infinity = todos
 	formats: Set<Format>
 	expandAlbums: boolean
-	columns: Set<keyof Song> // subconjunto de las keys de COLUMNS
+	columns: (keyof Song)[] // subconjunto de las keys de COLUMNS, en el orden de salida deseado
 	onProgress?: (message: string) => void // default: console.log
 }
 

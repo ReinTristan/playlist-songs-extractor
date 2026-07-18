@@ -43,6 +43,8 @@ row by just changing the URL. Configurable options:
 - **Output formats** — any combination of JSON, CSV, and Excel (XLSX).
 - **Expand albums/mixes** — toggle expanding long albums/mixes into individual songs.
 - **Columns to save** — pick exactly which columns/fields are written to the files.
+- **Column order** — reorder the selected columns (moves them up/down); affects the column
+  order in CSV/XLSX and the key order in JSON.
 
 ### Quick mode (non-interactive)
 

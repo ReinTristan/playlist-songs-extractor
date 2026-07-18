@@ -9,7 +9,7 @@ function baseConfig(): ExtractConfig {
 		maxVideos: Infinity,
 		formats: new Set(['json']),
 		expandAlbums: false,
-		columns: new Set(['position', 'songTitle']),
+		columns: ['position', 'songTitle'],
 	}
 }
 
@@ -21,7 +21,7 @@ describe('runExtraction validación previa', () => {
 	})
 	it('rechaza con columns vacío sin abrir el navegador', async () => {
 		const config = baseConfig()
-		config.columns = new Set()
+		config.columns = []
 		await assert.rejects(() => runExtraction(config), /columns/i)
 	})
 	it('rechaza con fullUrl vacío sin abrir el navegador', async () => {

@@ -629,10 +629,11 @@ async function writeOutputs({
 	outDir: string
 	playListName: string
 	formats: Set<Format>
-	columns: Set<keyof Song>
+	columns: (keyof Song)[]
 }): Promise<void> {
-	// Columnas elegidas, preservando el orden canónico de COLUMNS.
-	const selectedColumns = COLUMNS.filter((c) => columns.has(c.key))
+	// Columnas elegidas, en el orden elegido por el usuario.
+	const byKey = new Map(COLUMNS.map((c) => [c.key, c]))
+	const selectedColumns = columns.map((k) => byKey.get(k)!)
 	await mkdir(outDir, { recursive: true })
 
 	// JSON (arrays nativos), proyectado a las columnas elegidas.
@@ -695,7 +696,7 @@ export async function runExtraction(
 		throw new Error(
 			'runExtraction: formats no puede estar vacío (elige al menos json, csv o xlsx)',
 		)
-	if (columns.size === 0)
+	if (columns.length === 0)
 		throw new Error(
 			'runExtraction: columns no puede estar vacío (elige al menos una columna)',
 		)

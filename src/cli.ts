@@ -34,7 +34,7 @@ function defaultConfig(): ExtractConfig {
 		maxVideos: Infinity,
 		formats: new Set<Format>(FORMATS.map((f) => f.value)),
 		expandAlbums: true,
-		columns: new Set<keyof Song>(COLUMNS.map((c) => c.key)),
+		columns: COLUMNS.map((c) => c.key),
 	}
 }
 
@@ -119,7 +119,52 @@ async function editColumns(config: ExtractConfig): Promise<void> {
 		initialValues: [...config.columns],
 		required: true,
 	})
-	if (!p.isCancel(sel)) config.columns = new Set(sel)
+	if (p.isCancel(sel)) return
+	// Conserva el orden personalizado de las columnas que siguen elegidas y
+	// agrega al final (orden canónico) las que se acaban de marcar.
+	const selSet = new Set(sel)
+	const kept = config.columns.filter((k) => selSet.has(k))
+	const added = sel.filter((k) => !kept.includes(k))
+	config.columns = [...kept, ...added]
+}
+
+const columnLabel = (k: keyof Song): string =>
+	COLUMNS.find((c) => c.key === k)!.header
+
+async function editColumnOrder(config: ExtractConfig): Promise<void> {
+	const order = [...config.columns]
+
+	while (true) {
+		const choice = await p.select({
+			message: 'Reordenar columnas (elige una para moverla, o termina)',
+			options: [
+				...order.map((k, i) => ({
+					value: k,
+					label: `${i + 1}. ${columnLabel(k)}`,
+				})),
+				{ value: '__done', label: pc.green('✔ Listo') },
+			],
+		})
+		if (p.isCancel(choice) || choice === '__done') break
+
+		const idx = order.indexOf(choice as keyof Song)
+		const dir = await p.select({
+			message: `Mover "${columnLabel(choice as keyof Song)}"`,
+			options: [
+				{ value: 'up', label: '↑ Subir' },
+				{ value: 'down', label: '↓ Bajar' },
+				{ value: 'cancel', label: 'Cancelar' },
+			],
+		})
+		if (p.isCancel(dir) || dir === 'cancel') continue
+		if (dir === 'up' && idx > 0) {
+			;[order[idx - 1], order[idx]] = [order[idx], order[idx - 1]]
+		}
+		if (dir === 'down' && idx < order.length - 1) {
+			;[order[idx + 1], order[idx]] = [order[idx], order[idx + 1]]
+		}
+	}
+	config.columns = order
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +207,12 @@ async function interactiveMenu(): Promise<void> {
 					{
 						value: 'columns',
 						label: 'Columnas a guardar',
-						hint: `${config.columns.size}/${COLUMNS.length}`,
+						hint: `${config.columns.length}/${COLUMNS.length}`,
+					},
+					{
+						value: 'columnOrder',
+						label: 'Orden de columnas',
+						hint: config.columns.map(columnLabel).join(' → '),
 					},
 					{ value: 'extract', label: pc.green('▶ Extraer') },
 					{ value: 'quit', label: 'Salir' },
@@ -189,6 +239,9 @@ async function interactiveMenu(): Promise<void> {
 					break
 				case 'columns':
 					await editColumns(config)
+					break
+				case 'columnOrder':
+					await editColumnOrder(config)
 					break
 				case 'extract': {
 					if (!config.fullUrl) {
