@@ -1,7 +1,6 @@
 {
 	"name": "playlist-extractor",
 	"version": "1.0.0",
-	"main": "src/extractor.ts",
 	"type": "module",
 	"scripts": {
 		"start": "node src/cli.ts",
