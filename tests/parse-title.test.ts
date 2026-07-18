@@ -61,7 +61,7 @@ describe('parseTitle', () => {
 		assert.equal(r.songTitle, 'Some Song Without Artist Separator')
 	})
 
-	it('feat. antes del guion no se come el separador (Bug 1)', () => {
+	it('feat. antes del guion no se come el separador', () => {
 		const r = parseTitle('TheFatRat feat. Laura Brehm - MAYDAY')
 		assert.deepEqual(r.artists, ['TheFatRat'])
 		assert.deepEqual(r.featuredArtists, ['Laura Brehm'])
@@ -84,8 +84,27 @@ describe('parseTitle', () => {
 		assert.equal(r.songTitle, 'Home')
 	})
 
-	it('feat. pegado al nombre sin espacio (Bug 5)', () => {
+	it('feat. pegado al nombre sin espacio ', () => {
 		const r = parseTitle('Anuka - Fatal Error feat.Ddark')
 		assert.deepEqual(r.featuredArtists, ['Ddark'])
+	})
+
+	it('no corta artistas con guion interno ', () => {
+		const r = parseTitle('Drake - Forever ft. Jay-Z')
+		assert.deepEqual(r.artists, ['Drake'])
+		assert.deepEqual(r.featuredArtists, ['Jay-Z'])
+		assert.equal(r.songTitle, 'Forever')
+	})
+	it('no corta artistas con guion interno ', () => {
+		const r = parseTitle('Artist feat. T-Pain - Song')
+		assert.deepEqual(r.artists, ['Artist'])
+		assert.deepEqual(r.featuredArtists, ['T-Pain'])
+		assert.equal(r.songTitle, 'Song')
+	})
+	it('no corta artistas con guion interno ', () => {
+		const r = parseTitle('A-Trak feat. Todd Terry - Push')
+		assert.deepEqual(r.artists, ['A-Trak'])
+		assert.deepEqual(r.featuredArtists, ['Todd Terry'])
+		assert.equal(r.songTitle, 'Push')
 	})
 })
