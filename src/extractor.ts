@@ -2,7 +2,8 @@
  * Extractor de canciones de playlists de YouTube (core / scraper).
  *
  * Este módulo expone la lógica de extracción (`runExtraction`) y las funciones
- * puras de parseo. El arranque (CLI interactivo y modo argv) vive en `cli.ts`.
+ * puras de parseo. El arranque (CLI interactivo y modo argv) vive en `cli.ts`;
+ * los tipos y constantes compartidos, en `types.ts`.
  *
  * Genera output/<playlist>_<timestamp local>/ con los formatos seleccionados
  * (playlist.json, playlist.csv, playlist.xlsx).
@@ -13,213 +14,28 @@ import path from 'node:path'
 import dayjs from 'dayjs'
 import ExcelJS from 'exceljs'
 import { type Browser, chromium, type Page } from 'playwright'
-
-// ---------------------------------------------------------------------------
-// Tipos
-// ---------------------------------------------------------------------------
-
-interface PlaylistVideo {
-	index: number // posición 1-based dentro de la playlist
-	rawTitle: string
-	channel: string
-	videoId: string
-	url: string
-	thumbnail: string
-	duration: string
-	durationSeconds: number
-	availability: 'available' | 'unavailable'
-	videoType: 'single' | 'album' | 'mix' | 'unknown'
-	isCandidate: boolean
-}
-
-interface Track {
-	trackIndex: number
-	startTimestamp: string
-	rawTrackTitle: string
-}
-
-interface ParsedTitle {
-	artists: string[]
-	featuredArtists: string[]
-	songTitle: string
-	mixType: string
-	genres: string[]
-}
-
-export interface Song {
-	position: string
-	artists: string[]
-	featuredArtists: string[]
-	songTitle: string
-	mixType: string
-	genres: string[]
-	rawTitle: string
-	channel: string
-	videoType: string
-	availability: string
-	duration: string
-	videoId: string
-	url: string
-	thumbnail: string
-	parentVideoId: string
-	startTimestamp: string
-}
-
-/** Formatos de archivo que puede generar la extracción. */
-export type Format = 'json' | 'csv' | 'xlsx'
-
-/** Configuración de una extracción, ajustable desde el CLI. */
-export interface ExtractConfig {
-	fullUrl: string
-	maxVideos: number // Infinity = todos
-	formats: Set<Format>
-	expandAlbums: boolean
-	columns: Set<keyof Song> // subconjunto de las keys de COLUMNS
-}
-
-interface YoutubePageHTML extends Window {
-	ytInitialPlayerResponse: {
-		videoDetails: {
-			shortDescription: string
-		}
-	}
-	ytInitialData: {
-		metadata: {
-			playlistMetadataRenderer: {
-				title: string
-			}
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Constantes de heurística
-// ---------------------------------------------------------------------------
-
-/** Duración (s) a partir de la cual un video se considera candidato a álbum/mix. */
-const LONG_VIDEO_SECONDS = 18 * 60
-
-const ALBUM_KEYWORDS = [
-	'full album',
-	'album completo',
-	'álbum completo',
-	'full ep',
-	'the album',
-	'disco completo',
-]
-const MIX_KEYWORDS = [
-	'mixtape',
-	'megamix',
-	'dj set',
-	'compilation',
-	'continuous mix',
-	'podcast',
-	'live set',
-	// Nota: no incluir 'mix' suelto: sobre-clasifica temas de una sola canción
-	// como "(Extended Mix)", "(VIP Mix)", "(Original Mix)" (falsos DJ sets).
-]
-
-/** Palabras que indican un tipo de mezcla (no la canción original). */
-const MIX_TYPE_KEYWORDS = [
-	'remix',
-	'bootleg',
-	'edit',
-	'flip',
-	'mashup',
-	'mash-up',
-	'vip',
-	'rework',
-	'refix',
-	'cover',
-	'remaster',
-	'remastered',
-	'extended mix',
-	'extended',
-	'club mix',
-	'radio edit',
-	'instrumental',
-	'acoustic',
-	'acapella',
-	'a cappella',
-	'slowed',
-	'sped up',
-	'nightcore',
-]
-
-/** Lista blanca de géneros para detectarlos en corchetes/paréntesis del título. */
-const GENRE_KEYWORDS = [
-	'drum & bass',
-	'drum and bass',
-	'dnb',
-	'd&b',
-	'deep house',
-	'future house',
-	'tech house',
-	'progressive house',
-	'electro house',
-	'bass house',
-	'slap house',
-	'big room',
-	'future bass',
-	'melodic dubstep',
-	'melodic bass',
-	'color bass',
-	'colour bass',
-	'future garage',
-	'uk garage',
-	'hard techno',
-	'hard house',
-	'hardstyle',
-	'hardcore',
-	'happy hardcore',
-	'psytrance',
-	'trance',
-	'techno',
-	'house',
-	'dubstep',
-	'riddim',
-	'trap',
-	'edm',
-	'synthwave',
-	'lo-fi',
-	'lofi',
-	'chillstep',
-	'chillout',
-	'ambient',
-	'downtempo',
-	'breakbeat',
-	'jungle',
-	'phonk',
-	'brazilian phonk',
-	'hyperpop',
-	'hip hop',
-	'hip-hop',
-	'rap',
-	'r&b',
-	'pop',
-	'rock',
-	'indie',
-	'metal',
-	'reggaeton',
-	'reggae',
-	'latin',
-	'salsa',
-	'cumbia',
-	'jazz',
-	'funk',
-	'soul',
-	'disco',
-	'garage',
-]
-
-/** Etiquetas de "ruido" a quitar del título. */
-const NOISE_PATTERNS: RegExp[] = [
-	/\(\s*official(?:\s+music)?(?:\s+lyric)?(?:\s+video|\s+audio)?\s*\)/gi,
-	/\[\s*official(?:\s+music)?(?:\s+lyric)?(?:\s+video|\s+audio)?\s*\]/gi,
-	/\(\s*(?:music\s+video|lyric\s+video|lyrics?|visuali[sz]er|audio|video oficial|audio oficial|video musical|letra)\s*\)/gi,
-	/\[\s*(?:music\s+video|lyric\s+video|lyrics?|visuali[sz]er|audio|video oficial|audio oficial|video musical|letra)\s*\]/gi,
-	/[([]\s*(?:hd|hq|4k|8k|m\/v|mv|free\s+download|free\s+dl|out\s+now)\s*[)\]]/gi,
-]
+import {
+	ALBUM_KEYWORDS,
+	ANY_TS,
+	COLUMNS,
+	type Column,
+	type ExtractConfig,
+	type Format,
+	GENRE_KEYWORDS,
+	LEADING_TS,
+	LONG_VIDEO_SECONDS,
+	MIX_KEYWORDS,
+	MIX_TYPE_KEYWORDS,
+	NOISE_PATTERNS,
+	NUM_LEAD_TS,
+	NUM_TAIL_TS,
+	type ParsedTitle,
+	type PlaylistVideo,
+	RANGE_TS,
+	type Song,
+	type Track,
+	type YoutubePageHTML,
+} from './types.ts'
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -268,7 +84,7 @@ function parseTitle(raw: string): ParsedTitle {
 	//    en "Artista feat. Invitado - Canción" el " - " debe sobrevivir al paso 5.
 	//    Se tolera "feat."/"ft." pegado al nombre sin espacio ("feat.Ddark").
 	const featRegex =
-		/[([]?\s*\b(?:feat|ft|featuring)\b\.?\s*([^)\]\-–—]+?)\s*(?:[)\]]|(?=[-–—]|$))/gi
+		/[([]?\s*\b(?:feat|ft|featuring)\b\.?\s*([^)\]]+?)\s*(?:[)\]]|(?=\s[-–—]\s|$))/gi
 
 	working = working.replace(featRegex, (_m, names: string) => {
 		splitArtists(names).forEach((a) => {
@@ -384,9 +200,6 @@ function parseTitle(raw: string): ParsedTitle {
 // Tracklist (descripción de álbumes/mixes)
 // ---------------------------------------------------------------------------
 
-/** Timestamp al inicio del texto de una pista, con paréntesis/guion opcionales. */
-const LEADING_TS = /^[([]?((?:\d{1,2}:)?\d{1,2}:\d{2})[)\]]?\s*[-–—.]?\s*/
-
 function parseTracklist(description: string): Track[] {
 	if (!description) return []
 	const lines = description
@@ -395,10 +208,9 @@ function parseTracklist(description: string): Track[] {
 		.filter(Boolean)
 
 	// Estrategia A: timestamps (h:)mm:ss
-	const timeRe = /((?:\d{1,2}:)?\d{1,2}:\d{2})/
 	const tsTracks: Track[] = []
 	for (const line of lines) {
-		const m = line.match(timeRe)
+		const m = line.match(ANY_TS)
 		if (!m) continue
 		let rest = line.replace(m[0], ' ')
 		rest = rest
@@ -406,7 +218,11 @@ function parseTracklist(description: string): Track[] {
 			.replace(/[\s\-–—.([]+$/, '')
 			.trim()
 		rest = rest.replace(/^\d{1,2}\s*[.)-]\s*/, '') // quitar numeración inicial sobrante
-		rest = rest.replace(LEADING_TS, '') // quitar timestamp residual (p. ej. rangos "0:00 - 5:36 …")
+		// Quitar timestamp residual solo si la línea original era un rango "ts - ts"
+		// (si no, un título que es una hora, p. ej. "11:11", se perdería).
+		if (RANGE_TS.test(line)) {
+			rest = rest.replace(LEADING_TS, '')
+		}
 		if (rest.length >= 2) {
 			tsTracks.push({
 				trackIndex: tsTracks.length + 1,
@@ -426,14 +242,15 @@ function parseTracklist(description: string): Track[] {
 		// se captura el que aparezca y se limpia del título.
 		let rest = m[2]
 		let startTimestamp = ''
-		const leadTs = rest.match(/^\s*[([]?((?:\d{1,2}:)?\d{1,2}:\d{2})[)\]]?\s*/)
+		const leadTs = rest.match(NUM_LEAD_TS)
 		if (leadTs) {
 			startTimestamp = leadTs[1]
-			rest = rest.slice(leadTs[0].length)
+			rest = rest
+				.slice(leadTs[0].length)
+				.replace(/^\s*[-–—]\s*/, '')
+				.trim()
 		} else {
-			const tailTs = rest.match(
-				/\s*[([]?((?:\d{1,2}:)?\d{1,2}:\d{2})[)\]]?\s*$/,
-			)
+			const tailTs = rest.match(NUM_TAIL_TS)
 			if (tailTs) {
 				startTimestamp = tailTs[1]
 				rest = rest.slice(0, rest.length - tailTs[0].length)
@@ -575,19 +392,21 @@ async function scrapePlaylist(
 			document.title.replace(/\s*-\s*YouTube\s*$/, '')
 
 		// Canal: primer enlace a un canal dentro del header de la playlist.
-		const header =
-			document.querySelector(
-				'yt-page-header-renderer, ytd-playlist-header-renderer',
-			) || document.body
-		const ownerAnchor = Array.from(header.querySelectorAll('a')).find((a) =>
-			/\/(@|channel\/|c\/|user\/)/.test(
-				(a as HTMLAnchorElement).getAttribute('href') || '',
-			),
-		) as HTMLAnchorElement | undefined
+		const header = document.querySelector(
+			'yt-page-header-renderer, ytd-playlist-header-renderer',
+		)
+		const ownerAnchor = header
+			? (Array.from(header.querySelectorAll('a')).find((a) =>
+					/\/(@|channel\/|c\/|user\/)/.test(
+						(a as HTMLAnchorElement).getAttribute('href') || '',
+					),
+				) as HTMLAnchorElement | undefined)
+			: undefined
 		const channel = (ownerAnchor?.innerText || '').trim()
 
 		return { title, channel }
 	})
+
 	const videos: PlaylistVideo[] = await page.evaluate(() => {
 		const items = Array.from(document.querySelectorAll('yt-lockup-view-model'))
 		return items.map((item, i) => {
@@ -720,7 +539,7 @@ function trackToSong(v: PlaylistVideo, track: Track): Song {
 		: v.url
 	return {
 		position: `${v.index}.${track.trackIndex}`,
-		artists: parsed.artists,
+		artists: parsed.artists.length > 0 ? parsed.artists : [v.channel],
 		featuredArtists: parsed.featuredArtists,
 		songTitle: parsed.songTitle,
 		mixType: parsed.mixType,
@@ -757,27 +576,6 @@ function buildSongRows(
 // ---------------------------------------------------------------------------
 // Exportadores
 // ---------------------------------------------------------------------------
-
-export const COLUMNS: { header: string; key: keyof Song; width: number }[] = [
-	{ header: 'Posición', key: 'position', width: 10 },
-	{ header: 'Artistas', key: 'artists', width: 28 },
-	{ header: 'Featured', key: 'featuredArtists', width: 22 },
-	{ header: 'Canción', key: 'songTitle', width: 34 },
-	{ header: 'Tipo de mezcla', key: 'mixType', width: 16 },
-	{ header: 'Géneros', key: 'genres', width: 18 },
-	{ header: 'Título original', key: 'rawTitle', width: 42 },
-	{ header: 'Canal', key: 'channel', width: 24 },
-	{ header: 'Tipo de video', key: 'videoType', width: 14 },
-	{ header: 'Disponibilidad', key: 'availability', width: 14 },
-	{ header: 'Duración', key: 'duration', width: 10 },
-	{ header: 'Video ID', key: 'videoId', width: 14 },
-	{ header: 'URL', key: 'url', width: 44 },
-	{ header: 'Thumbnail', key: 'thumbnail', width: 44 },
-	{ header: 'Video padre', key: 'parentVideoId', width: 14 },
-	{ header: 'Timestamp', key: 'startTimestamp', width: 12 },
-]
-
-type Column = (typeof COLUMNS)[number]
 
 function flattenForTable(
 	song: Song,
@@ -862,75 +660,96 @@ async function writeOutputs({
  * Ejecuta una extracción completa según `config`: abre el navegador, lee la
  * playlist, (opcionalmente) expande álbumes/mixes y escribe los archivos.
  * Devuelve el número de canciones y la carpeta de salida.
+ *
+ * Si se pasa `sharedBrowser` se reutiliza (y no se cierra aquí); si no, se
+ * lanza un Chromium propio que se cierra al terminar.
  */
 export async function runExtraction(
 	config: ExtractConfig,
+	sharedBrowser?: Browser,
 ): Promise<{ count: number; outDir: string }> {
 	const { fullUrl, maxVideos, formats, expandAlbums, columns } = config
-	let browser: Browser | null = null
+	if (!fullUrl.trim())
+		throw new Error('runExtraction: fullUrl no puede estar vacío')
+	if (formats.size === 0)
+		throw new Error(
+			'runExtraction: formats no puede estar vacío (elige al menos json, csv o xlsx)',
+		)
+	if (columns.size === 0)
+		throw new Error(
+			'runExtraction: columns no puede estar vacío (elige al menos una columna)',
+		)
+	const log = config.onProgress ?? console.log
 
+	let ownBrowser: Browser | null = null
 	try {
-		console.log('▶ Abriendo navegador…')
-		browser = await chromium.launch({ headless: true })
+		let browser: Browser
+		if (sharedBrowser) {
+			browser = sharedBrowser
+		} else {
+			log('▶ Abriendo navegador…')
+			ownBrowser = await chromium.launch({ headless: true })
+			browser = ownBrowser
+		}
 		const context = await browser.newContext({
 			locale: 'en-US',
 			userAgent:
 				'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
 		})
-		const page = await context.newPage()
+		try {
+			const page = await context.newPage()
 
-		console.log('▶ Leyendo la playlist…')
-		const { title, videos, channel } = await scrapePlaylist(
-			page,
-			fullUrl,
-			maxVideos,
-		)
-		console.log(`  ✓ ${videos.length} videos encontrados en "${title}"`)
-
-		// Tracklists de candidatos (álbumes/mixes), solo si está habilitado.
-		const candidates = expandAlbums ? videos.filter((v) => v.isCandidate) : []
-		const tracklists = new Map<string, Track[]>()
-		if (candidates.length > 0) {
-			console.log(
-				`▶ Extrayendo tracklists de ${candidates.length} candidato(s) a álbum/mix…`,
+			log('▶ Leyendo la playlist…')
+			const { title, videos, channel } = await scrapePlaylist(
+				page,
+				fullUrl,
+				maxVideos,
 			)
-			for (const v of candidates) {
-				const tracks = await fetchTracklist(page, v.videoId)
-				if (tracks.length > 0) {
-					tracklists.set(v.videoId, tracks)
-					console.log(
-						`  ✓ "${v.rawTitle.slice(0, 50)}…" → ${tracks.length} pistas`,
-					)
-				} else {
-					console.log(
-						`  · "${v.rawTitle.slice(0, 50)}…" → sin tracklist detectable`,
-					)
+			log(`  ✓ ${videos.length} videos encontrados en "${title}"`)
+
+			// Tracklists de candidatos (álbumes/mixes), solo si está habilitado.
+			const candidates = expandAlbums ? videos.filter((v) => v.isCandidate) : []
+			const tracklists = new Map<string, Track[]>()
+			if (candidates.length > 0) {
+				log(
+					`▶ Extrayendo tracklists de ${candidates.length} candidato(s) a álbum/mix…`,
+				)
+				for (const v of candidates) {
+					const tracks = await fetchTracklist(page, v.videoId)
+					if (tracks.length > 0) {
+						tracklists.set(v.videoId, tracks)
+						log(`  ✓ "${v.rawTitle.slice(0, 50)}…" → ${tracks.length} pistas`)
+					} else {
+						log(`  · "${v.rawTitle.slice(0, 50)}…" → sin tracklist detectable`)
+					}
+					await sleep(600) // ser educado con el servidor
 				}
-				await sleep(600) // ser educado con el servidor
 			}
+
+			const songs = buildSongRows(videos, tracklists)
+			const stamp = dayjs().format('YYYY-MM-DD_HH-mm-ss')
+			// Si el título es genérico (p. ej. "Videos"), el canal alcanza para
+			// reconocer la carpeta; si no, se antepone el canal al título.
+			const genericTitle = /^(videos|playlist|mix|favoritos|favorites)$/i.test(
+				title.trim(),
+			)
+			const playListName = genericTitle ? channel : `${channel}-${title}`
+			const outDir = path.join(
+				process.cwd(),
+				'output',
+				`${sanitizeFilename(playListName)}_${stamp}`,
+			)
+			await writeOutputs({ songs, outDir, playListName, formats, columns })
+
+			const files = [...formats].map((f) => `playlist.${f}`).join(', ')
+			log(`\n✅ Listo: ${songs.length} canciones exportadas`)
+			log(`   ${path.relative(process.cwd(), outDir)}/  (${files})`)
+			return { count: songs.length, outDir }
+		} finally {
+			await context.close()
 		}
-
-		const songs = buildSongRows(videos, tracklists)
-		const stamp = dayjs().format('YYYY-MM-DD_HH-mm-ss')
-		// Si el título es genérico (p. ej. "Videos"), el canal alcanza para
-		// reconocer la carpeta; si no, se antepone el canal al título.
-		const genericTitle = /^(videos|playlist|mix|favoritos|favorites)$/i.test(
-			title.trim(),
-		)
-		const playListName = genericTitle ? channel : `${channel}-${title}`
-		const outDir = path.join(
-			process.cwd(),
-			'output',
-			`${sanitizeFilename(playListName)}_${stamp}`,
-		)
-		await writeOutputs({ songs, outDir, playListName, formats, columns })
-
-		const files = [...formats].map((f) => `playlist.${f}`).join(', ')
-		console.log(`\n✅ Listo: ${songs.length} canciones exportadas`)
-		console.log(`   ${path.relative(process.cwd(), outDir)}/  (${files})`)
-		return { count: songs.length, outDir }
 	} finally {
-		if (browser) await browser.close()
+		if (ownBrowser) await ownBrowser.close()
 	}
 }
 
@@ -941,4 +760,6 @@ export {
 	parseTitle,
 	parseTracklist,
 	sanitizeFilename,
+	trackToSong,
+	videoToSong,
 }
