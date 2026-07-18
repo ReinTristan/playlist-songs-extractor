@@ -4,3 +4,4 @@ output/
 .claude
 .vs-code
 .agents
+.env
