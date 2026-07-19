@@ -65,6 +65,15 @@ export const FORMATS = [
 ] as const
 export type Format = (typeof FORMATS)[number]['value']
 
+/** Modos de orden de canciones (opción experimental, fuente única). */
+export const SONG_ORDERS = [
+	{ value: 'original', label: 'Original (como en YouTube)' },
+	{ value: 'reverse', label: 'Invertido' },
+	{ value: 'alphabetical-asc', label: 'Alfabético (A→Z)' },
+	{ value: 'alphabetical-desc', label: 'Alfabético (Z→A)' },
+	{ value: 'shuffle', label: 'Aleatorio' },
+] as const
+export type SongOrder = (typeof SONG_ORDERS)[number]['value']
 /** Configuración de una extracción, ajustable desde el CLI. */
 export interface ExtractConfig {
 	fullUrl: string
@@ -72,6 +81,8 @@ export interface ExtractConfig {
 	formats: Set<Format>
 	expandAlbums: boolean
 	columns: (keyof Song)[] // subconjunto de las keys de COLUMNS, en el orden de salida deseado
+	songOrder: SongOrder // default 'original' (opción extra, desactivada por defecto)
+	excludeUnavailable: boolean // default false (opción extra, desactivada por defecto)
 	onProgress?: (message: string) => void // default: console.log
 }
 

@@ -10,6 +10,8 @@ function baseConfig(): ExtractConfig {
 		formats: new Set(['json']),
 		expandAlbums: false,
 		columns: ['position', 'songTitle'],
+		songOrder: 'original',
+		excludeUnavailable: false,
 	}
 }
 

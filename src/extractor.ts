@@ -33,6 +33,7 @@ import {
 	type PlaylistVideo,
 	RANGE_TS,
 	type Song,
+	type SongOrder,
 	type Track,
 	type YoutubePageHTML,
 } from './types.ts'
@@ -593,6 +594,39 @@ function buildSongRows(
 	return songs
 }
 
+function shuffle<T>(arr: T[]): T[] {
+	const out = [...arr]
+	for (let i = out.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1))
+		;[out[i], out[j]] = [out[j], out[i]]
+	}
+	return out
+}
+
+const byTitleAsc = (a: Song, b: Song): number =>
+	a.songTitle.localeCompare(b.songTitle, undefined, { sensitivity: 'base' })
+
+/** Aplica el orden elegido (opción extra) y renumera `position` si ya no es el original. */
+function applySongOrder(songs: Song[], order: SongOrder): Song[] {
+	if (order === 'original') return songs
+	let ordered: Song[]
+	switch (order) {
+		case 'reverse':
+			ordered = songs.toReversed()
+			break
+		case 'alphabetical-asc':
+			ordered = songs.toSorted((a, b) => byTitleAsc(a, b))
+			break
+		case 'alphabetical-desc':
+			ordered = songs.toSorted((a, b) => byTitleAsc(b, a))
+			break
+		case 'shuffle':
+			ordered = shuffle(songs)
+			break
+	}
+	return ordered.map((s, i) => ({ ...s, position: String(i + 1) }))
+}
+
 // ---------------------------------------------------------------------------
 // Exportadores
 // ---------------------------------------------------------------------------
@@ -689,7 +723,15 @@ export async function runExtraction(
 	config: ExtractConfig,
 	sharedBrowser?: Browser,
 ): Promise<{ count: number; outDir: string }> {
-	const { fullUrl, maxVideos, formats, expandAlbums, columns } = config
+	const {
+		fullUrl,
+		maxVideos,
+		formats,
+		expandAlbums,
+		columns,
+		songOrder,
+		excludeUnavailable,
+	} = config
 	if (!fullUrl.trim())
 		throw new Error('runExtraction: fullUrl no puede estar vacío')
 	if (formats.size === 0)
@@ -747,7 +789,11 @@ export async function runExtraction(
 				}
 			}
 
-			const songs = buildSongRows(videos, tracklists)
+			let songs = buildSongRows(videos, tracklists)
+			if (excludeUnavailable) {
+				songs = songs.filter((s) => s.availability !== 'unavailable')
+			}
+			songs = applySongOrder(songs, songOrder)
 			const stamp = dayjs().format('YYYY-MM-DD_HH-mm-ss')
 			// Si el título es genérico (p. ej. "Videos"), el canal alcanza para
 			// reconocer la carpeta; si no, se antepone el canal al título.
@@ -776,6 +822,7 @@ export async function runExtraction(
 
 // Exporta funciones puras para pruebas.
 export {
+	applySongOrder,
 	classifyVideoType,
 	durationToSeconds,
 	parseTitle,

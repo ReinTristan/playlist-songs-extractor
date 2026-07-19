@@ -45,6 +45,12 @@ row by just changing the URL. Configurable options:
 - **Columns to save** — pick exactly which columns/fields are written to the files.
 - **Column order** — reorder the selected columns (moves them up/down); affects the column
   order in CSV/XLSX and the key order in JSON.
+- **Extra options** — experimental toggles, disabled by default:
+  - *Song order* — keep the original YouTube order, reverse it, sort alphabetically by song
+    title (A→Z or Z→A), or shuffle randomly. Whenever the order changes, `position` is
+    renumbered sequentially (1, 2, 3…) instead of keeping the original playlist position.
+  - *Exclude unavailable* — drop private/deleted videos from the output instead of
+    including them with empty fields.
 
 ### Quick mode (non-interactive)
 

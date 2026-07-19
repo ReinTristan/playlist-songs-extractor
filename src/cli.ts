@@ -21,6 +21,7 @@ import {
 	FORMATS,
 	type Format,
 	type Song,
+	SONG_ORDERS,
 } from './types.ts'
 
 // ---------------------------------------------------------------------------
@@ -35,6 +36,8 @@ function defaultConfig(): ExtractConfig {
 		formats: new Set<Format>(FORMATS.map((f) => f.value)),
 		expandAlbums: true,
 		columns: COLUMNS.map((c) => c.key),
+		songOrder: 'original',
+		excludeUnavailable: false,
 	}
 }
 
@@ -170,6 +173,70 @@ async function editColumnOrder(config: ExtractConfig): Promise<void> {
 	config.columns = order
 }
 
+async function editSongOrder(config: ExtractConfig): Promise<void> {
+	const v = await p.select({
+		message: 'Orden de las canciones en el output',
+		options: SONG_ORDERS.map((o) => ({ value: o.value, label: o.label })),
+		initialValue: config.songOrder,
+	})
+	if (!p.isCancel(v)) config.songOrder = v
+}
+
+async function editExcludeUnavailable(config: ExtractConfig): Promise<void> {
+	const v = await p.confirm({
+		message:
+			'¿Excluir canciones no disponibles (privadas/borradas) del output?',
+		initialValue: config.excludeUnavailable,
+	})
+	if (!p.isCancel(v)) config.excludeUnavailable = v
+}
+
+/** Resumen corto de las opciones extra activas, para el hint del menú principal. */
+function extraSummary(config: ExtractConfig): string {
+	const parts: string[] = []
+	if (config.songOrder !== 'original') {
+		parts.push(
+			SONG_ORDERS.find((o) => o.value === config.songOrder)?.label ??
+				SONG_ORDERS[0].label,
+		)
+	}
+	if (config.excludeUnavailable) parts.push('excluir no disp.')
+	return parts.length > 0 ? parts.join(', ') : 'ninguna activa'
+}
+
+async function extraMenu(config: ExtractConfig): Promise<void> {
+	while (true) {
+		const action = await p.select({
+			message: 'Opciones extra (experimentales, desactivadas por defecto)',
+			options: [
+				{
+					value: 'songOrder',
+					label: 'Orden de canciones',
+					hint:
+						SONG_ORDERS.find((o) => o.value === config.songOrder)?.label ??
+						SONG_ORDERS[0].label,
+				},
+				{
+					value: 'excludeUnavailable',
+					label: 'Excluir no disponibles',
+					hint: config.excludeUnavailable ? 'sí' : 'no',
+				},
+				{ value: 'back', label: '← Volver al menú principal' },
+			],
+		})
+		if (p.isCancel(action) || action === 'back') return
+
+		switch (action) {
+			case 'songOrder':
+				await editSongOrder(config)
+				break
+			case 'excludeUnavailable':
+				await editExcludeUnavailable(config)
+				break
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Menú principal
 // ---------------------------------------------------------------------------
@@ -217,6 +284,11 @@ async function interactiveMenu(): Promise<void> {
 						label: 'Orden de columnas',
 						hint: config.columns.map(columnLabel).join(' → '),
 					},
+					{
+						value: 'extra',
+						label: 'Opciones extra',
+						hint: extraSummary(config),
+					},
 					{ value: 'extract', label: pc.green('▶ Extraer') },
 					{ value: 'quit', label: 'Salir' },
 				],
@@ -245,6 +317,9 @@ async function interactiveMenu(): Promise<void> {
 					break
 				case 'columnOrder':
 					await editColumnOrder(config)
+					break
+				case 'extra':
+					await extraMenu(config)
 					break
 				case 'extract': {
 					if (!config.fullUrl) {
