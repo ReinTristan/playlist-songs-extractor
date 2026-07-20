@@ -1,7 +1,6 @@
 import { chromium } from 'playwright'
 
-const url =
-	'https://www.youtube.com/playlist?list=PLRBp0Fe2GpgnIh0AiYKh7o7HnYAej-5ph'
+const url = process.env.DEBUG_URL ?? ''
 const browser = await chromium.launch({ headless: true })
 const ctx = await browser.newContext({
 	locale: 'en-US',
