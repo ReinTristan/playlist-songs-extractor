@@ -13,7 +13,7 @@
 export interface PlaylistVideo {
 	index: number // posición 1-based dentro de la playlist
 	rawTitle: string
-	channel: string
+	channel: string[] // uno o más canales dueños (colaboraciones de YouTube)
 	videoId: string
 	url: string
 	thumbnail: string
@@ -22,6 +22,18 @@ export interface PlaylistVideo {
 	availability: 'available' | 'unavailable'
 	videoType: 'single' | 'album' | 'mix' | 'unknown'
 	isCandidate: boolean
+}
+
+/**
+ * Forma intermedia de un video tal como sale del `page.evaluate` de
+ * `scrapePlaylist`: trae señales crudas del DOM (anchors de canal, texto de
+ * la fila de metadata) en vez del `channel` ya resuelto, porque resolverlo
+ * requiere `resolveChannelNames` (función pura de Node, sin acceso desde el
+ * contexto del browser).
+ */
+export type RawPlaylistVideo = Omit<PlaylistVideo, 'channel'> & {
+	chanAnchorTexts: string[]
+	metaRowText: string
 }
 
 export interface Track {
@@ -46,7 +58,7 @@ export interface Song {
 	mixType: string
 	genres: string[]
 	rawTitle: string
-	channel: string
+	channel: string[]
 	videoType: string
 	availability: string
 	duration: string

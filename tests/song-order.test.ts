@@ -12,7 +12,7 @@ function makeSong(overrides: Partial<Song>): Song {
 		mixType: '',
 		genres: [],
 		rawTitle: '',
-		channel: 'Channel',
+		channel: ['Channel'],
 		videoType: 'single',
 		availability: 'available',
 		duration: '3:00',

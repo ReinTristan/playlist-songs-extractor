@@ -32,6 +32,7 @@ import {
 	type ParsedTitle,
 	type PlaylistVideo,
 	RANGE_TS,
+	type RawPlaylistVideo,
 	type Song,
 	type SongOrder,
 	type Track,
@@ -67,6 +68,30 @@ function splitArtists(raw: string): string[] {
 	return raw
 		.split(/\s*(?:,|&|\+|×|\bx\b|\bvs\.?\b|\bft\.?\b|\bwith\b)\s*/i)
 		.map((a) => a.trim())
+		.filter(Boolean)
+}
+
+/**
+ * Resuelve el/los nombre(s) de canal de un video a partir de dos señales
+ * crudas leídas del DOM. Prioriza los anchors de canal (caso normal); si no
+ * hay ninguno (videos de "colaboración" con varios canales dueños, donde
+ * YouTube no pone links y en cambio escribe los nombres como texto plano,
+ * p. ej. "Alan Walker and Au/Ra" o con coma de Oxford "A, B, and C"), separa
+ * ese texto por " and "/",".
+ */
+function resolveChannelNames(
+	anchorTexts: string[],
+	metaRowText: string,
+): string[] {
+	const fromAnchors = [
+		...new Set(anchorTexts.map((t) => t.trim()).filter(Boolean)),
+	]
+	if (fromAnchors.length > 0) return fromAnchors
+	const text = metaRowText.trim()
+	if (!text) return []
+	return text
+		.split(/\s*,\s*(?:and\s+)?|\s+and\s+/i)
+		.map((s) => s.trim())
 		.filter(Boolean)
 }
 
@@ -362,15 +387,26 @@ async function scrapePlaylist(
 	await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
 	await dismissConsent(page)
 	// La página de una playlist agrupa su contenido en varios
-	// "item-section-renderer": el primero es la playlist en sí, los
+	// "item-section-renderer": el primero suele ser la playlist en sí, los
 	// siguientes son secciones de videos/playlists recomendados que YouTube
-	// agrega debajo. Todo lo que sigue se limita a ese primer contenedor
-	// para no arrastrar esos falsos positivos.
-	const playlistSection = () =>
-		page.locator('yt-item-section-renderer, ytd-item-section-renderer').first()
+	// agrega debajo. Pero en playlists cortas, YouTube puede meter esas
+	// sugerencias como hermanas del contenido real dentro del MISMO section
+	// (variante Polymer vieja) — ahí, el contenido real está anidado en
+	// ytd-playlist-video-list-renderer, que las sugerencias no comparten. Si
+	// ese contenedor existe, se prioriza sobre el heurístico de "primer
+	// section" para no arrastrar esos falsos positivos.
+	const hasListRenderer =
+		(await page.locator('ytd-playlist-video-list-renderer').count()) > 0
+	const scopeSelectors = hasListRenderer
+		? ['ytd-playlist-video-list-renderer']
+		: ['yt-item-section-renderer', 'ytd-item-section-renderer']
+	const itemTags = ['yt-lockup-view-model', 'ytd-playlist-video-renderer']
+	const playlistSection = () => page.locator(scopeSelectors.join(', ')).first()
 	await page
 		.waitForSelector(
-			'yt-item-section-renderer yt-lockup-view-model, ytd-item-section-renderer yt-lockup-view-model',
+			scopeSelectors
+				.flatMap((s) => itemTags.map((t) => `${s} ${t}`))
+				.join(', '),
 			{ timeout: 30000 },
 		)
 		.catch(() => {})
@@ -381,7 +417,7 @@ async function scrapePlaylist(
 	let lastCount = 0
 	for (let i = 0; i < 400 && stable < 3; i++) {
 		const count = await playlistSection()
-			.locator('yt-lockup-view-model')
+			.locator('yt-lockup-view-model, ytd-playlist-video-renderer')
 			.count()
 		if (count >= maxVideos) break
 		if (count === lastCount) stable++
@@ -420,16 +456,26 @@ async function scrapePlaylist(
 		return { title, channel }
 	})
 
-	const videos: PlaylistVideo[] = await page.evaluate(() => {
+	const videos: RawPlaylistVideo[] = await page.evaluate(() => {
 		// El primer "item-section-renderer" es la playlist real; los que le
-		// siguen son secciones de recomendados que no deben incluirse. Si no se
-		// encuentra ninguno (cambio de markup de YouTube), se cae al documento
-		// completo para no romper la extracción.
+		// siguen son secciones de recomendados que no deben incluirse. Si existe
+		// ytd-playlist-video-list-renderer (variante Polymer vieja), se prioriza
+		// ese scope más estricto porque ahí las sugerencias no se cuelan aunque
+		// compartan section con el contenido real. Si no se encuentra nada
+		// (cambio de markup de YouTube), se cae al documento completo para no
+		// romper la extracción.
+		const listRenderer = document.querySelector(
+			'ytd-playlist-video-list-renderer',
+		)
 		const section =
 			document.querySelector('yt-item-section-renderer') ||
 			document.querySelector('ytd-item-section-renderer')
-		const root = section ?? document
-		const items = Array.from(root.querySelectorAll('yt-lockup-view-model'))
+		const root = listRenderer ?? section ?? document
+		const items = Array.from(
+			root.querySelectorAll(
+				'yt-lockup-view-model, ytd-playlist-video-renderer',
+			),
+		)
 		return items.map((item, i) => {
 			const titleEl = item.querySelector('h3 a') as HTMLAnchorElement | null
 			const rawTitle = (
@@ -444,12 +490,24 @@ async function scrapePlaylist(
 			} catch {
 				/* href no parseable */
 			}
-			const chanAnchor = Array.from(item.querySelectorAll('a')).find((a) =>
-				/\/(@|channel\/|c\/|user\/)/.test(
-					(a as HTMLAnchorElement).getAttribute('href') || '',
-				),
-			) as HTMLAnchorElement | undefined
-			const channel = (chanAnchor?.innerText || '').trim()
+			// Canal(es): en videos normales hay un <a> al canal; en videos de
+			// "colaboración" (varios canales dueños) YouTube no pone ningún
+			// anchor y en cambio escribe los nombres como texto plano (p. ej.
+			// "Alan Walker and Au/Ra") en la primera fila de metadata. Se
+			// capturan ambas señales crudas acá; resolveChannelNames (función
+			// pura de Node) decide cuál usar y cómo separarlas.
+			const chanAnchorTexts = Array.from(item.querySelectorAll('a'))
+				.filter((a) =>
+					/\/(@|channel\/|c\/|user\/)/.test(
+						(a as HTMLAnchorElement).getAttribute('href') || '',
+					),
+				)
+				.map((a) => (a as HTMLAnchorElement).innerText.trim())
+				.filter(Boolean)
+			const metaRowText = (
+				item.querySelector('.ytContentMetadataViewModelMetadataRow')
+					?.textContent || ''
+			).trim()
 			const badges = Array.from(
 				item.querySelectorAll('yt-thumbnail-badge-view-model'),
 			).map((b) => (b as HTMLElement).innerText.trim())
@@ -468,7 +526,8 @@ async function scrapePlaylist(
 			return {
 				index: i + 1,
 				rawTitle,
-				channel,
+				chanAnchorTexts,
+				metaRowText,
 				videoId,
 				url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : href,
 				thumbnail,
@@ -477,7 +536,7 @@ async function scrapePlaylist(
 				availability: unavailable ? 'unavailable' : 'available',
 				videoType: 'single',
 				isCandidate: false,
-			} as PlaylistVideo
+			} as RawPlaylistVideo
 		})
 	})
 
@@ -485,8 +544,10 @@ async function scrapePlaylist(
 		? videos.slice(0, maxVideos)
 		: videos
 
-	// Completar campos derivados (fuera del browser).
-	for (const v of limited) {
+	// Completar campos derivados (fuera del browser), incluyendo la
+	// resolución final de channel (requiere resolveChannelNames, que no
+	// existe dentro del contexto del browser en page.evaluate).
+	const finalVideos: PlaylistVideo[] = limited.map((v) => {
 		v.durationSeconds = durationToSeconds(v.duration)
 		if (v.availability === 'available') {
 			const { videoType, isCandidate } = classifyVideoType(
@@ -498,11 +559,16 @@ async function scrapePlaylist(
 		} else {
 			v.videoType = 'unknown'
 		}
-	}
+		const { chanAnchorTexts, metaRowText, ...rest } = v
+		return {
+			...rest,
+			channel: resolveChannelNames(chanAnchorTexts, metaRowText),
+		}
+	})
 
 	return {
 		title: title || 'playlist',
-		videos: limited,
+		videos: finalVideos,
 		channel: channel || 'Channel',
 	}
 }
@@ -535,7 +601,7 @@ function videoToSong(v: PlaylistVideo): Song {
 	const parsed = parseTitle(v.rawTitle)
 	return {
 		position: String(v.index),
-		artists: parsed.artists.length > 0 ? parsed.artists : [v.channel],
+		artists: parsed.artists.length > 0 ? parsed.artists : v.channel,
 		featuredArtists: parsed.featuredArtists,
 		songTitle: parsed.songTitle,
 		mixType: parsed.mixType,
@@ -560,7 +626,7 @@ function trackToSong(v: PlaylistVideo, track: Track): Song {
 		: v.url
 	return {
 		position: `${v.index}.${track.trackIndex}`,
-		artists: parsed.artists.length > 0 ? parsed.artists : [v.channel],
+		artists: parsed.artists.length > 0 ? parsed.artists : v.channel,
 		featuredArtists: parsed.featuredArtists,
 		songTitle: parsed.songTitle,
 		mixType: parsed.mixType,
@@ -667,7 +733,7 @@ async function writeOutputs({
 }): Promise<void> {
 	// Columnas elegidas, en el orden elegido por el usuario.
 	const byKey = new Map(COLUMNS.map((c) => [c.key, c]))
-	const selectedColumns = columns.map((k) => byKey.get(k)!)
+	const selectedColumns = columns.map((k) => byKey.get(k) ?? COLUMNS[0])
 	await mkdir(outDir, { recursive: true })
 
 	// JSON (arrays nativos), proyectado a las columnas elegidas.
@@ -827,6 +893,7 @@ export {
 	durationToSeconds,
 	parseTitle,
 	parseTracklist,
+	resolveChannelNames,
 	sanitizeFilename,
 	trackToSong,
 	videoToSong,

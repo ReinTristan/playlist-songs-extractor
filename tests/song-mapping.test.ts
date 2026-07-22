@@ -5,7 +5,7 @@ import { trackToSong, videoToSong } from '../src/extractor.ts'
 const video = {
 	index: 1,
 	rawTitle: 'Some Title Without Dash',
-	channel: 'SomeChannel',
+	channel: ['SomeChannel'],
 	videoId: 'abc',
 	url: 'https://youtube.com/watch?v=abc',
 	thumbnail: '',
@@ -29,5 +29,13 @@ describe('artists fallback a canal', () => {
 		}
 		const song = trackToSong(video, track)
 		assert.deepEqual(song.artists, ['SomeChannel'])
+	})
+})
+
+describe('artists fallback con canal múltiple', () => {
+	it('usa todos los nombres de canal cuando hay colaboración y no hay artista parseado', () => {
+		const collabVideo = { ...video, channel: ['Artist A', 'Artist B'] }
+		const song = videoToSong(collabVideo)
+		assert.deepEqual(song.artists, ['Artist A', 'Artist B'])
 	})
 })

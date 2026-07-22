@@ -52,7 +52,8 @@ Three source files, deliberately separated by responsibility (see the header com
 
 ### Important scraping/heuristic invariants (see inline comments in `extractor.ts` for the "why")
 
-- Playlist scraping is scoped to the first `yt-item-section-renderer`/`ytd-item-section-renderer` on the page — later sections are YouTube's "recommended videos/playlists" and must not leak into results.
+- Playlist scraping prefers `ytd-playlist-video-list-renderer` when present (older YouTube UI variant where "suggested videos to add" can render as siblings inside the *same* `yt-item-section-renderer`/`ytd-item-section-renderer` as the real content on short playlists); otherwise it falls back to the first `yt-item-section-renderer`/`ytd-item-section-renderer` on the page — later sections are YouTube's "recommended videos/playlists" and must not leak into results.
+- `channel` on `PlaylistVideo`/`Song` is `string[]`, not `string` — YouTube's "collaboration" videos have multiple owner channels with no `<a href="/channel/...">` anchors at all (names appear as plain text, e.g. "Alan Walker and Au/Ra"); `resolveChannelNames` in `extractor.ts` prefers anchor text when present and falls back to splitting that plain text otherwise.
 - `MIX_KEYWORDS` intentionally excludes the bare word "mix" — it over-matches song titles like "(Extended Mix)"/"(VIP Mix)" as false DJ-set/compilation detections.
 - Only videos ≥ `LONG_VIDEO_SECONDS` (18 min) are ever opened to fetch a tracklist (`isCandidate`); shorter videos matching album/mix keywords are labeled but not expanded.
 - `position` for expanded tracks is `"<videoIndex>.<trackIndex>"` (e.g. `5.1`, `5.2`); non-expanded songs use the plain video index.
