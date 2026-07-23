@@ -44,9 +44,17 @@ import { durationToSeconds, sanitizeFilename, shuffle, sleep } from './utils.ts'
 // Utilidades
 // ---------------------------------------------------------------------------
 
+// Separadores de artistas, en dos clases:
+//  - Símbolos (, & + × *): se aceptan con o sin espacios alrededor.
+//  - Tokens de palabra (x, vs/vs., w/, with, and): exigen espacio a ambos lados
+//    para NO partir nombres ("Sandstorm" por "and", "Maxwell" por "x", etc.).
+// No se separa por "/" suelto a propósito, para preservar "Au/Ra", "AC/DC".
+// Nota: separar por " and " es agresivo (parte "Chase and Status"), pero es el
+// criterio que el proyecto ya usa para canales de colaboración y lo que se busca
+// acá: priorizar separar todos los artistas de un título con muchos separadores.
 function splitArtists(raw: string): string[] {
 	return raw
-		.split(/\s*(?:,|&|\+|×|\bx\b|\bvs\.?\b|\bft\.?\b|\bwith\b)\s*/i)
+		.split(/\s*[,&+×*]\s*|\s+(?:x|vs\.?|w\/|with|and)\s+/gi)
 		.map((a) => a.trim())
 		.filter(Boolean)
 }
@@ -168,21 +176,40 @@ function parseTitle(raw: string): ParsedTitle {
 					genres.push(genre)
 			}
 		}
-		working = segments.find((s) => /\s[-–—]\s/.test(s)) || segments[0]
+		const dashSeg = segments.find((s) => /\s[-–—]\s/.test(s))
+		if (dashSeg) {
+			// Formato NCS: hay un guion → quedarse solo con ese segmento (artista-
+			// canción); los demás son metadata (género/label) ya procesada.
+			working = dashSeg
+		} else {
+			// Sin guion en ningún segmento: el pipe actúa como separador
+			// artista/canción. Se descartan los segmentos que son puro género (ya
+			// capturado) y se deja el resto con el pipe intacto para que el paso 5
+			// lo separe.
+			const isPureGenre = (s: string) =>
+				GENRE_KEYWORDS.some((g) => s.toLowerCase() === g)
+			const content = segments.filter((s) => !isPureGenre(s))
+			working = (content.length ? content : segments).join(' | ')
+		}
 	}
 
-	// 5) Artistas + canción: separar por el primer guion.
+	// 5) Artistas + canción: separar por el separador principal.
+	//    El guion es prioritario (se prueba primero); si no hay, se aceptan slash
+	//    o pipe como alternativa, exigiendo espacios alrededor para no partir
+	//    nombres con "/" interno sin espacios (p. ej. "Au/Ra", "AC/DC").
 	let artists: string[] = []
 	let songTitle = working
-	const dashMatch = working.match(/^(.*?)\s+[-–—]\s+(.*)$/)
-	if (dashMatch) {
-		artists = splitArtists(dashMatch[1])
-		songTitle = dashMatch[2].trim()
+	const primaryMatch =
+		working.match(/^(.*?)\s+[-–—]\s+(.*)$/) ??
+		working.match(/^(.*?)\s+[/|]\s+(.*)$/)
+	if (primaryMatch) {
+		artists = splitArtists(primaryMatch[1])
+		songTitle = primaryMatch[2].trim()
 	}
 
 	// Limpieza final del título de la canción.
 	songTitle = songTitle
-		.replace(/\s*[-–—]\s*$/, '')
+		.replace(/\s*[-–—/|]\s*$/, '')
 		.replace(/\s+/g, ' ')
 		.trim()
 

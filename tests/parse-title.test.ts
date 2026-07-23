@@ -107,4 +107,81 @@ describe('parseTitle', () => {
 		assert.deepEqual(r.featuredArtists, ['Todd Terry'])
 		assert.equal(r.songTitle, 'Push')
 	})
+	it('Evaluacion completa de la separacion con todos los casos al mismo tiempo y con mas de dos artistas', () => {
+		//La idea es poner el caso mas complejo para
+		const megaCollabTitle =
+			'Alan Walker & Au/Ra and Unlike Pluto with Tyler the creator, Aero Chord x Martin Ingrosso vs ODESZA w/ Aviva vs. Ava Max, Kim Petras × Neoni X Dusqk * S3RL with Vau boy ft Lionfield - Best song collab ever'
+
+		const r = parseTitle(megaCollabTitle)
+		assert.deepEqual(r.artists, [
+			'Alan Walker',
+			'Au/Ra',
+			'Unlike Pluto',
+			'Tyler the creator',
+			'Aero Chord',
+			'Martin Ingrosso',
+			'ODESZA',
+			'Aviva',
+			'Ava Max',
+			'Kim Petras',
+			'Neoni',
+			'Dusqk',
+			'S3RL',
+			'Vau boy',
+		])
+		assert.deepEqual(r.featuredArtists, ['Lionfield'])
+		assert.deepEqual(r.songTitle, 'Best song collab ever')
+	})
+	it('separa artista y canción por slash con espacios', () => {
+		const r = parseTitle('Artist / Song')
+		assert.deepEqual(r.artists, ['Artist'])
+		assert.equal(r.songTitle, 'Song')
+	})
+
+	it('separa artista y canción por pipe cuando no hay guion', () => {
+		const r = parseTitle('Artist | Song')
+		assert.deepEqual(r.artists, ['Artist'])
+		assert.equal(r.songTitle, 'Song')
+	})
+
+	it('no parte un artista con slash interno (guion como separador)', () => {
+		const r = parseTitle('Au/Ra - Song')
+		assert.deepEqual(r.artists, ['Au/Ra'])
+		assert.equal(r.songTitle, 'Song')
+	})
+
+	it('no parte AC/DC por el slash sin espacios', () => {
+		const r = parseTitle('AC/DC - Thunderstruck')
+		assert.deepEqual(r.artists, ['AC/DC'])
+		assert.equal(r.songTitle, 'Thunderstruck')
+	})
+
+	it('combina separador de artistas (coma) con separador de canción (slash)', () => {
+		const r = parseTitle('SFRNG, SOVAGI / Song')
+		assert.deepEqual(r.artists, ['SFRNG', 'SOVAGI'])
+		assert.equal(r.songTitle, 'Song')
+	})
+
+	it('pipe como separador con género trailing', () => {
+		const r = parseTitle('Artist | Song | Trance')
+		assert.deepEqual(r.artists, ['Artist'])
+		assert.equal(r.songTitle, 'Song')
+		assert.deepEqual(r.genres, ['trance'])
+	})
+
+	it('Multiples artistas por el mismo separador', () => {
+		const megaCollabTitle =
+			'Alan Walker x Au/Ra x Torine x Unlike Pluto x Aviva x S3RL - Best song collab ever'
+		const r = parseTitle(megaCollabTitle)
+		assert.deepEqual(r.artists, [
+			'Alan Walker',
+			'Au/Ra',
+			'Torine',
+			'Unlike Pluto',
+			'Aviva',
+			'S3RL',
+		])
+		assert.deepEqual(r.featuredArtists, [])
+		assert.deepEqual(r.songTitle, 'Best song collab ever')
+	})
 })
