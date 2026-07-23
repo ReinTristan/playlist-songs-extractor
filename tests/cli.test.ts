@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { describe, it } from 'node:test'
-import { normalizeUrl, parseMaxVideos } from '../src/cli.ts'
+import { normalizeUrl, parseMaxVideos } from '../src/utils.ts'
 
 describe('cli main() sin TTY y sin argv ', () => {
 	it('sale con código 1 e imprime uso cuando no hay argv ni TTY', () => {
-		const result = spawnSync('node', ['src/cli.ts'], {
+		const result = spawnSync('node', ['src/index.ts'], {
 			stdio: 'pipe',
 			timeout: 10000,
 		})

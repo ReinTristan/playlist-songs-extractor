@@ -1,16 +1,12 @@
 /**
- * CLI interactivo del extractor de playlists de YouTube.
+ * Menú interactivo del extractor de playlists de YouTube.
  *
- * Sin argumentos abre un menú donde se ajustan las opciones y luego se pulsa
- * "Extraer"; al terminar vuelve al menú conservando la configuración, para
- * procesar varias playlists seguidas.
- *
- * Modo rápido (no interactivo):
- *   node src/cli.ts "https://www.youtube.com/playlist?list=..." [maxVideos]
- *   bun  src/cli.ts "https://www.youtube.com/playlist?list=..." [maxVideos]
+ * Expone `interactiveMenu` (un menú donde se ajustan las opciones y luego se
+ * pulsa "Extraer"; al terminar vuelve al menú conservando la configuración,
+ * para procesar varias playlists seguidas) y `defaultConfig`. El punto de
+ * entrada y el modo rápido no interactivo viven en `src/index.ts`.
  */
 
-import { fileURLToPath } from 'node:url'
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import { type Browser, chromium } from 'playwright'
@@ -20,9 +16,10 @@ import {
 	type ExtractConfig,
 	FORMATS,
 	type Format,
-	type Song,
 	SONG_ORDERS,
+	type Song,
 } from './types.ts'
+import { normalizeUrl, parseMaxVideos } from './utils.ts'
 
 // ---------------------------------------------------------------------------
 // Configuración
@@ -39,28 +36,6 @@ function defaultConfig(): ExtractConfig {
 		songOrder: 'original',
 		excludeUnavailable: false,
 	}
-}
-
-/** Acepta una URL completa o un ID de lista y devuelve la URL normalizada. */
-export function normalizeUrl(raw: string): string {
-	const v = raw.trim()
-	if (!v) return ''
-	if (!/youtube\.com|youtu\.be/.test(v)) {
-		return `https://youtube.com/playlist?list=${v}`
-	}
-	return /^https?:\/\//i.test(v) ? v : `https://${v}`
-}
-
-/**
- * Interpreta el límite de videos: entero ≥ 1, vacío/"todos" = Infinity,
- * cualquier otra cosa = null (inválido).
- */
-export function parseMaxVideos(raw: string | undefined | null): number | null {
-	const t = (raw ?? '').trim()
-	if (t === '' || /^todos$/i.test(t)) return Infinity
-	if (!/^\d+$/.test(t)) return null
-	const n = Number(t)
-	return n >= 1 ? n : null
 }
 
 const maxLabel = (n: number): string =>
@@ -345,48 +320,4 @@ async function interactiveMenu(): Promise<void> {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Modo rápido por argumentos (compatibilidad hacia atrás)
-// ---------------------------------------------------------------------------
-
-function parseLegacyArgs(): ExtractConfig {
-	const config = defaultConfig()
-	config.fullUrl = normalizeUrl(process.argv[2])
-	const limitArg = process.argv[3] || process.env.PLAYLIST_MAX || ''
-	const parsed = parseMaxVideos(limitArg)
-	config.maxVideos = parsed ?? Infinity
-	return config
-}
-
-async function main(): Promise<void> {
-	if (process.argv[2]) {
-		await runExtraction(parseLegacyArgs())
-		return
-	}
-	if (!process.stdout.isTTY) {
-		console.error(
-			'Uso: node src/cli.ts "URL_DE_PLAYLIST" [maxVideos]\n(sin argumentos y sin terminal interactiva no hay nada que hacer)',
-		)
-		process.exitCode = 1
-		return
-	}
-	await interactiveMenu()
-}
-
-// ---------------------------------------------------------------------------
-// Bootstrap
-// ---------------------------------------------------------------------------
-
-const meta = import.meta as ImportMeta & { main?: boolean }
-const runDirectly =
-	typeof meta.main === 'boolean'
-		? meta.main // Bun
-		: process.argv[1] !== undefined &&
-			process.argv[1] === fileURLToPath(import.meta.url) // Node
-
-if (runDirectly) {
-	main().catch((err) => {
-		console.error('✖ Error:', err)
-		process.exit(1)
-	})
-}
+export { defaultConfig, interactiveMenu }

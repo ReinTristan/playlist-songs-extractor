@@ -1,4 +1,5 @@
 import { chromium } from 'playwright'
+import { sleep } from './utils.ts'
 
 const url = process.env.DEBUG_URL ?? ''
 const itemIndex = Number(process.env.DEBUG_ITEM_INDEX ?? '0')
@@ -10,11 +11,11 @@ const ctx = await browser.newContext({
 })
 const page = await ctx.newPage()
 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
-await new Promise((r) => setTimeout(r, 4000))
+await sleep(4000)
 // Scrollea un poco para forzar la carga perezosa de más secciones/ítems,
 // igual que hace scrapePlaylist antes de leer el DOM.
 await page.mouse.wheel(0, 2000)
-await new Promise((r) => setTimeout(r, 2000))
+await sleep(2000)
 
 const info = await page.evaluate((itemIndex) => {
 	// YouTube sirve al menos dos variantes de UI para la misma playlist:

@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import {
-	classifyVideoType,
-	durationToSeconds,
-	sanitizeFilename,
-} from '../src/extractor.ts'
+import { classifyVideoType } from '../src/extractor.ts'
+import { durationToSeconds, sanitizeFilename } from '../src/utils.ts'
 
 describe('durationToSeconds', () => {
 	it('convierte mm:ss', () => assert.equal(durationToSeconds('3:30'), 210))

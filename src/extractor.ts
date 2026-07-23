@@ -38,31 +38,11 @@ import {
 	type Track,
 	type YoutubePageHTML,
 } from './types.ts'
+import { durationToSeconds, sanitizeFilename, shuffle, sleep } from './utils.ts'
 
 // ---------------------------------------------------------------------------
 // Utilidades
 // ---------------------------------------------------------------------------
-
-const sleep = (ms: number): Promise<void> =>
-	new Promise((resolve) => setTimeout(resolve, ms))
-
-/** Convierte "h:mm:ss" o "mm:ss" a segundos. */
-function durationToSeconds(duration: string): number {
-	const parts = duration.split(':').map((p) => parseInt(p.trim(), 10))
-	if (parts.some((n) => Number.isNaN(n)) || parts.length === 0) return 0
-	return parts.reduce((acc, n) => acc * 60 + n, 0)
-}
-
-/** Sanitiza un nombre para usarlo como carpeta/archivo. */
-function sanitizeFilename(name: string): string {
-	return (
-		name
-			.replace(/[<>:"/\\|?*]/g, '')
-			.replace(/\s+/g, ' ')
-			.trim()
-			.slice(0, 120) || 'playlist'
-	)
-}
 
 function splitArtists(raw: string): string[] {
 	return raw
@@ -660,15 +640,6 @@ function buildSongRows(
 	return songs
 }
 
-function shuffle<T>(arr: T[]): T[] {
-	const out = [...arr]
-	for (let i = out.length - 1; i > 0; i--) {
-		const j = Math.floor(Math.random() * (i + 1))
-		;[out[i], out[j]] = [out[j], out[i]]
-	}
-	return out
-}
-
 const byTitleAsc = (a: Song, b: Song): number =>
 	a.songTitle.localeCompare(b.songTitle, undefined, { sensitivity: 'base' })
 
@@ -890,11 +861,9 @@ export async function runExtraction(
 export {
 	applySongOrder,
 	classifyVideoType,
-	durationToSeconds,
 	parseTitle,
 	parseTracklist,
 	resolveChannelNames,
-	sanitizeFilename,
 	trackToSong,
 	videoToSong,
 }
