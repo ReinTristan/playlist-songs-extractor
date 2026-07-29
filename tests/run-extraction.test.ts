@@ -6,7 +6,8 @@ import type { ExtractConfig } from '../src/types.ts'
 function baseConfig(): ExtractConfig {
 	return {
 		fullUrl: 'https://youtube.com/playlist?list=X',
-		maxVideos: Infinity,
+		allVideos: true,
+		maxVideos: 50,
 		formats: new Set(['json']),
 		expandAlbums: false,
 		columns: ['position', 'songTitle'],

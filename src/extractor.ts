@@ -14,6 +14,7 @@ import path from 'node:path'
 import dayjs from 'dayjs'
 import ExcelJS from 'exceljs'
 import { type Browser, chromium, type Page } from 'playwright'
+import { columnHeader, t } from './i18n.ts'
 import {
 	ALBUM_KEYWORDS,
 	ANY_TS,
@@ -321,7 +322,10 @@ async function fetchTracklist(page: Page, videoId: string): Promise<Track[]> {
 		return parseTracklist(description)
 	} catch (err) {
 		console.warn(
-			`  ⚠ No se pudo leer la descripción de ${videoId}: ${(err as Error).message}`,
+			t('extract.descriptionFailed', {
+				videoId,
+				message: (err as Error).message,
+			}),
 		)
 		return []
 	}
@@ -386,10 +390,11 @@ async function dismissConsent(page: Page): Promise<void> {
 	}
 }
 
+/** `limit === null` = sin límite (todos los videos de la playlist). */
 async function scrapePlaylist(
 	page: Page,
 	url: string,
-	maxVideos = Infinity,
+	limit: number | null = null,
 ): Promise<{ title: string; videos: PlaylistVideo[]; channel: string }> {
 	await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
 	await dismissConsent(page)
@@ -426,7 +431,7 @@ async function scrapePlaylist(
 		const count = await playlistSection()
 			.locator('yt-lockup-view-model, ytd-playlist-video-renderer')
 			.count()
-		if (count >= maxVideos) break
+		if (limit !== null && count >= limit) break
 		if (count === lastCount) stable++
 		else stable = 0
 		lastCount = count
@@ -547,9 +552,7 @@ async function scrapePlaylist(
 		})
 	})
 
-	const limited = Number.isFinite(maxVideos)
-		? videos.slice(0, maxVideos)
-		: videos
+	const limited = limit !== null ? videos.slice(0, limit) : videos
 
 	// Completar campos derivados (fuera del browser), incluyendo la
 	// resolución final de channel (requiere resolveChannelNames, que no
@@ -590,7 +593,7 @@ function videoToSong(v: PlaylistVideo): Song {
 			position: String(v.index),
 			artists: [],
 			featuredArtists: [],
-			songTitle: v.rawTitle || '[No disponible]',
+			songTitle: v.rawTitle || t('output.unavailableTitle'),
 			mixType: '',
 			genres: [],
 			rawTitle: v.rawTitle,
@@ -754,9 +757,11 @@ async function writeOutputs({
 	// Workbook compartido para XLSX y CSV (arrays como texto).
 	if (formats.has('xlsx') || formats.has('csv')) {
 		const wb = new ExcelJS.Workbook()
-		const ws = wb.addWorksheet('Canciones')
+		const ws = wb.addWorksheet(t('output.sheetName'))
+		// Header traducido, key canónica: lo visible cambia con el idioma, los
+		// datos no.
 		ws.columns = selectedColumns.map((c) => ({
-			header: c.header,
+			header: columnHeader(c.key),
 			key: c.key as string,
 			width: c.width,
 		}))
@@ -789,6 +794,7 @@ export async function runExtraction(
 ): Promise<{ count: number; outDir: string }> {
 	const {
 		fullUrl,
+		allVideos,
 		maxVideos,
 		formats,
 		expandAlbums,
@@ -814,7 +820,7 @@ export async function runExtraction(
 		if (sharedBrowser) {
 			browser = sharedBrowser
 		} else {
-			log('▶ Abriendo navegador…')
+			log(t('extract.openingBrowser'))
 			ownBrowser = await chromium.launch({ headless: true })
 			browser = ownBrowser
 		}
@@ -826,28 +832,27 @@ export async function runExtraction(
 		try {
 			const page = await context.newPage()
 
-			log('▶ Leyendo la playlist…')
+			log(t('extract.reading'))
 			const { title, videos, channel } = await scrapePlaylist(
 				page,
 				fullUrl,
-				maxVideos,
+				allVideos ? null : maxVideos,
 			)
-			log(`  ✓ ${videos.length} videos encontrados en "${title}"`)
+			log(t('extract.found', { count: videos.length, title }))
 
 			// Tracklists de candidatos (álbumes/mixes), solo si está habilitado.
 			const candidates = expandAlbums ? videos.filter((v) => v.isCandidate) : []
 			const tracklists = new Map<string, Track[]>()
 			if (candidates.length > 0) {
-				log(
-					`▶ Extrayendo tracklists de ${candidates.length} candidato(s) a álbum/mix…`,
-				)
+				log(t('extract.candidates', { count: candidates.length }))
 				for (const v of candidates) {
 					const tracks = await fetchTracklist(page, v.videoId)
+					const title = v.rawTitle.slice(0, 50)
 					if (tracks.length > 0) {
 						tracklists.set(v.videoId, tracks)
-						log(`  ✓ "${v.rawTitle.slice(0, 50)}…" → ${tracks.length} pistas`)
+						log(t('extract.tracks', { count: tracks.length, title }))
 					} else {
-						log(`  · "${v.rawTitle.slice(0, 50)}…" → sin tracklist detectable`)
+						log(t('extract.noTracklist', { title }))
 					}
 					await sleep(600) // ser educado con el servidor
 				}
@@ -873,8 +878,13 @@ export async function runExtraction(
 			await writeOutputs({ songs, outDir, playListName, formats, columns })
 
 			const files = [...formats].map((f) => `playlist.${f}`).join(', ')
-			log(`\n✅ Listo: ${songs.length} canciones exportadas`)
-			log(`   ${path.relative(process.cwd(), outDir)}/  (${files})`)
+			log(t('extract.done', { count: songs.length }))
+			log(
+				t('extract.outputPath', {
+					dir: path.relative(process.cwd(), outDir),
+					files,
+				}),
+			)
 			return { count: songs.length, outDir }
 		} finally {
 			await context.close()

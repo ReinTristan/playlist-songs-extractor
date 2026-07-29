@@ -3,8 +3,12 @@
  *
  * Expone `interactiveMenu` (un menú donde se ajustan las opciones y luego se
  * pulsa "Extraer"; al terminar vuelve al menú conservando la configuración,
- * para procesar varias playlists seguidas) y `defaultConfig`. El punto de
- * entrada y el modo rápido no interactivo viven en `src/index.ts`.
+ * para procesar varias playlists seguidas), `promptFirstRunLocale` (la pregunta
+ * de idioma del primer arranque) y `defaultConfig`. El punto de entrada y el
+ * modo rápido no interactivo viven en `src/index.ts`.
+ *
+ * Todo el texto visible sale de `t()`: las opciones se construyen dentro del
+ * bucle del menú, así que cambiar de idioma se refleja en el render siguiente.
  */
 
 import * as p from '@clack/prompts'
@@ -12,14 +16,23 @@ import pc from 'picocolors'
 import { type Browser, chromium } from 'playwright'
 import { runExtraction } from './extractor.ts'
 import {
+	changeLocale,
+	columnHeader,
+	currentLocale,
+	formatLabel,
+	languageName,
+	loadMeta,
+	songOrderLabel,
+	t,
+} from './i18n.ts'
+import {
 	COLUMNS,
 	type ExtractConfig,
 	FORMATS,
-	type Format,
 	SONG_ORDERS,
 	type Song,
 } from './types.ts'
-import { normalizeUrl, parseMaxVideos } from './utils.ts'
+import { normalizeUrl, parsePositiveInt } from './utils.ts'
 
 // ---------------------------------------------------------------------------
 // Configuración
@@ -29,8 +42,9 @@ import { normalizeUrl, parseMaxVideos } from './utils.ts'
 function defaultConfig(): ExtractConfig {
 	return {
 		fullUrl: '',
-		maxVideos: Infinity,
-		formats: new Set<Format>(FORMATS.map((f) => f.value)),
+		allVideos: true,
+		maxVideos: 50, // valor inicial del input cuando se elige "definir un número"
+		formats: new Set([...FORMATS]),
 		expandAlbums: true,
 		columns: COLUMNS.map((c) => c.key),
 		songOrder: 'original',
@@ -38,8 +52,8 @@ function defaultConfig(): ExtractConfig {
 	}
 }
 
-const maxLabel = (n: number): string =>
-	Number.isFinite(n) ? String(n) : 'todos'
+const maxLabel = (config: ExtractConfig): string =>
+	config.allVideos ? t('prompts.maxAll') : String(config.maxVideos)
 
 // ---------------------------------------------------------------------------
 // Editores de cada opción (mutan `config` in-place y devuelven Promise<void>;
@@ -48,34 +62,51 @@ const maxLabel = (n: number): string =>
 
 async function editUrl(config: ExtractConfig): Promise<void> {
 	const raw = await p.text({
-		message: 'URL o ID de la playlist de YouTube',
-		placeholder: 'https://www.youtube.com/playlist?list=...',
+		message: t('prompts.url'),
+		placeholder: t('prompts.urlPlaceholder'),
 		initialValue: config.fullUrl,
-		validate: (v) => (v?.trim() ? undefined : 'Ingresa una URL o ID'),
+		validate: (v) => (v?.trim() ? undefined : t('prompts.urlInvalid')),
 	})
 	if (!p.isCancel(raw)) config.fullUrl = normalizeUrl(raw)
 }
 
+/**
+ * El límite es una selección (todos / un número) y no un input de texto: así
+ * "todos" es el booleano `allVideos` y no una palabra que habría que comparar
+ * en cada idioma.
+ */
 async function editMax(config: ExtractConfig): Promise<void> {
+	const mode = await p.select({
+		message: t('prompts.maxMode'),
+		options: [
+			{ value: 'all', label: t('prompts.maxAll') },
+			{ value: 'custom', label: t('prompts.maxCustom') },
+		],
+		initialValue: config.allVideos ? 'all' : 'custom',
+	})
+	if (p.isCancel(mode)) return
+	if (mode === 'all') {
+		config.allVideos = true
+		return
+	}
 	const raw = await p.text({
-		message: 'Límite de videos (vacío o "todos" = sin límite)',
-		initialValue: Number.isFinite(config.maxVideos)
-			? String(config.maxVideos)
-			: '',
+		message: t('prompts.maxNumber'),
+		initialValue: String(config.maxVideos),
 		validate: (v) =>
-			parseMaxVideos(v) === null
-				? 'Ingresa un entero ≥ 1, o deja vacío para todos'
-				: undefined,
+			parsePositiveInt(v) === null ? t('prompts.maxInvalid') : undefined,
 	})
 	if (p.isCancel(raw)) return
-	const parsed = parseMaxVideos(raw)
-	if (parsed !== null) config.maxVideos = parsed
+	const parsed = parsePositiveInt(raw)
+	if (parsed !== null) {
+		config.maxVideos = parsed
+		config.allVideos = false
+	}
 }
 
 async function editFormats(config: ExtractConfig): Promise<void> {
 	const sel = await p.multiselect({
-		message: 'Formatos de salida (espacio para alternar)',
-		options: [...FORMATS],
+		message: t('prompts.formats'),
+		options: FORMATS.map((f) => ({ value: f, label: formatLabel(f) })),
 		initialValues: [...config.formats],
 		required: true,
 	})
@@ -84,7 +115,7 @@ async function editFormats(config: ExtractConfig): Promise<void> {
 
 async function editExpand(config: ExtractConfig): Promise<void> {
 	const v = await p.confirm({
-		message: '¿Expandir álbumes/mixes largos en canciones individuales?',
+		message: t('prompts.expand'),
 		initialValue: config.expandAlbums,
 	})
 	if (!p.isCancel(v)) config.expandAlbums = v
@@ -92,8 +123,8 @@ async function editExpand(config: ExtractConfig): Promise<void> {
 
 async function editColumns(config: ExtractConfig): Promise<void> {
 	const sel = await p.multiselect({
-		message: 'Columnas a guardar (espacio para alternar)',
-		options: COLUMNS.map((c) => ({ value: c.key, label: c.header })),
+		message: t('prompts.columns'),
+		options: COLUMNS.map((c) => ({ value: c.key, label: columnHeader(c.key) })),
 		initialValues: [...config.columns],
 		required: true,
 	})
@@ -106,35 +137,31 @@ async function editColumns(config: ExtractConfig): Promise<void> {
 	config.columns = [...kept, ...added]
 }
 
-const columnLabel = (k: keyof Song): string => {
-	const label = COLUMNS.find((c) => c.key === k)
-	//Return first label as default
-	return label?.header ?? COLUMNS[0].header
-}
-
 async function editColumnOrder(config: ExtractConfig): Promise<void> {
 	const order = [...config.columns]
 
 	while (true) {
 		const choice = await p.select({
-			message: 'Reordenar columnas (elige una para moverla, o termina)',
+			message: t('prompts.columnOrder'),
 			options: [
 				...order.map((k, i) => ({
 					value: k,
-					label: `${i + 1}. ${columnLabel(k)}`,
+					label: `${i + 1}. ${columnHeader(k)}`,
 				})),
-				{ value: '__done', label: pc.green('✔ Listo') },
+				{ value: '__done', label: pc.green(t('prompts.columnOrderDone')) },
 			],
 		})
 		if (p.isCancel(choice) || choice === '__done') break
 
 		const idx = order.indexOf(choice as keyof Song)
 		const dir = await p.select({
-			message: `Mover "${columnLabel(choice as keyof Song)}"`,
+			message: t('prompts.columnMove', {
+				column: columnHeader(choice as keyof Song),
+			}),
 			options: [
-				{ value: 'up', label: '↑ Subir' },
-				{ value: 'down', label: '↓ Bajar' },
-				{ value: 'cancel', label: 'Cancelar' },
+				{ value: 'up', label: t('prompts.moveUp') },
+				{ value: 'down', label: t('prompts.moveDown') },
+				{ value: 'cancel', label: t('prompts.cancel') },
 			],
 		})
 		if (p.isCancel(dir) || dir === 'cancel') continue
@@ -150,8 +177,8 @@ async function editColumnOrder(config: ExtractConfig): Promise<void> {
 
 async function editSongOrder(config: ExtractConfig): Promise<void> {
 	const v = await p.select({
-		message: 'Orden de las canciones en el output',
-		options: SONG_ORDERS.map((o) => ({ value: o.value, label: o.label })),
+		message: t('prompts.songOrder'),
+		options: SONG_ORDERS.map((o) => ({ value: o, label: songOrderLabel(o) })),
 		initialValue: config.songOrder,
 	})
 	if (!p.isCancel(v)) config.songOrder = v
@@ -159,44 +186,81 @@ async function editSongOrder(config: ExtractConfig): Promise<void> {
 
 async function editExcludeUnavailable(config: ExtractConfig): Promise<void> {
 	const v = await p.confirm({
-		message:
-			'¿Excluir canciones no disponibles (privadas/borradas) del output?',
+		message: t('prompts.excludeUnavailable'),
 		initialValue: config.excludeUnavailable,
 	})
 	if (!p.isCancel(v)) config.excludeUnavailable = v
 }
 
+// ---------------------------------------------------------------------------
+// Idioma
+// ---------------------------------------------------------------------------
+
+/**
+ * Pregunta del primer arranque. Se arma **solo con `locales/meta.json`** (que
+ * trae el nombre nativo y las dos frases en cada idioma), así no hace falta
+ * cargar ningún `translation.json` antes de que el usuario elija. Devuelve el
+ * código elegido; si cancela, se queda con el detectado.
+ */
+async function promptFirstRunLocale(detected: string): Promise<string> {
+	const { languages } = loadMeta()
+	const meta = languages.find((l) => l.code === detected) ?? languages[0]
+
+	const keep = await p.confirm({ message: meta.firstRun.detected })
+	if (p.isCancel(keep)) return meta.code
+	if (keep) return meta.code
+
+	const chosen = await p.select({
+		message: meta.firstRun.choose,
+		options: languages.map((l) => ({ value: l.code, label: l.nativeName })),
+		initialValue: meta.code,
+	})
+	return p.isCancel(chosen) ? meta.code : chosen
+}
+
+/** Cambio de idioma desde el menú: se aplica en caliente y se persiste. */
+async function editLanguage(): Promise<void> {
+	const { languages } = loadMeta()
+	const chosen = await p.select({
+		message: t('prompts.language'),
+		options: languages.map((l) => ({ value: l.code, label: l.nativeName })),
+		initialValue: currentLocale(),
+	})
+	if (p.isCancel(chosen)) return
+	await changeLocale(chosen)
+	p.log.success(t('firstRun.saved', { language: languageName(chosen) }))
+}
+
+// ---------------------------------------------------------------------------
+// Opciones extra
+// ---------------------------------------------------------------------------
+
 /** Resumen corto de las opciones extra activas, para el hint del menú principal. */
 function extraSummary(config: ExtractConfig): string {
 	const parts: string[] = []
 	if (config.songOrder !== 'original') {
-		parts.push(
-			SONG_ORDERS.find((o) => o.value === config.songOrder)?.label ??
-				SONG_ORDERS[0].label,
-		)
+		parts.push(songOrderLabel(config.songOrder))
 	}
-	if (config.excludeUnavailable) parts.push('excluir no disp.')
-	return parts.length > 0 ? parts.join(', ') : 'ninguna activa'
+	if (config.excludeUnavailable) parts.push(t('hints.excludeUnavailable'))
+	return parts.length > 0 ? parts.join(', ') : t('hints.none')
 }
 
 async function extraMenu(config: ExtractConfig): Promise<void> {
 	while (true) {
 		const action = await p.select({
-			message: 'Opciones extra (experimentales, desactivadas por defecto)',
+			message: t('prompts.extra'),
 			options: [
 				{
 					value: 'songOrder',
-					label: 'Orden de canciones',
-					hint:
-						SONG_ORDERS.find((o) => o.value === config.songOrder)?.label ??
-						SONG_ORDERS[0].label,
+					label: t('prompts.extraSongOrder'),
+					hint: songOrderLabel(config.songOrder),
 				},
 				{
 					value: 'excludeUnavailable',
-					label: 'Excluir no disponibles',
-					hint: config.excludeUnavailable ? 'sí' : 'no',
+					label: t('prompts.extraExclude'),
+					hint: config.excludeUnavailable ? t('hints.yes') : t('hints.no'),
 				},
-				{ value: 'back', label: '← Volver al menú principal' },
+				{ value: 'back', label: t('prompts.back') },
 			],
 		})
 		if (p.isCancel(action) || action === 'back') return
@@ -222,55 +286,60 @@ async function interactiveMenu(): Promise<void> {
 	// Un solo Chromium por sesión: se lanza lazy en la primera extracción y se
 	// cierra al salir del menú.
 	let browser: Browser | null = null
-	p.intro(pc.bgCyan(pc.black(' Playlist Extractor ')))
+	p.intro(pc.bgCyan(pc.black(t('menu.title'))))
 
 	try {
 		while (true) {
 			const action = await p.select({
-				message: 'Ajusta las opciones y luego extrae',
+				message: t('menu.prompt'),
 				options: [
 					{
 						value: 'url',
-						label: 'URL de la playlist',
-						hint: config.fullUrl || 'sin definir',
+						label: t('menu.url'),
+						hint: config.fullUrl || t('hints.unset'),
 					},
 					{
 						value: 'max',
-						label: 'Límite de videos',
-						hint: maxLabel(config.maxVideos),
+						label: t('menu.max'),
+						hint: maxLabel(config),
 					},
 					{
 						value: 'formats',
-						label: 'Formatos de salida',
-						hint: [...config.formats].join(', '),
+						label: t('menu.formats'),
+						hint: [...config.formats].map(formatLabel).join(', '),
 					},
 					{
 						value: 'expand',
-						label: 'Expandir álbumes/mixes',
-						hint: config.expandAlbums ? 'sí' : 'no',
+						label: t('menu.expand'),
+						hint: config.expandAlbums ? t('hints.yes') : t('hints.no'),
 					},
 					{
 						value: 'columns',
-						label: 'Columnas a guardar',
+						label: t('menu.columns'),
 						hint: `${config.columns.length}/${COLUMNS.length}`,
 					},
 					{
 						value: 'columnOrder',
-						label: 'Orden de columnas',
-						hint: config.columns.map(columnLabel).join(' → '),
+						label: t('menu.columnOrder'),
+						hint: config.columns.map(columnHeader).join(' → '),
 					},
 					{
 						value: 'extra',
-						label: 'Opciones extra',
+						label: t('menu.extra'),
 						hint: extraSummary(config),
 					},
-					{ value: 'extract', label: pc.green('▶ Extraer') },
-					{ value: 'quit', label: 'Salir' },
+					{
+						value: 'language',
+						label: t('menu.language'),
+						hint: languageName(currentLocale()),
+					},
+					{ value: 'extract', label: pc.green(t('menu.extract')) },
+					{ value: 'quit', label: t('menu.quit') },
 				],
 			})
 
 			if (p.isCancel(action) || action === 'quit') {
-				p.outro('¡Hasta luego!')
+				p.outro(t('menu.bye'))
 				return
 			}
 
@@ -296,22 +365,27 @@ async function interactiveMenu(): Promise<void> {
 				case 'extra':
 					await extraMenu(config)
 					break
+				case 'language':
+					await editLanguage()
+					break
 				case 'extract': {
 					if (!config.fullUrl) {
-						p.log.warn('Primero define la URL de la playlist.')
+						p.log.warn(t('extract.needUrl'))
 						break
 					}
-					p.log.step(pc.cyan(`Extrayendo: ${config.fullUrl}`))
+					p.log.step(pc.cyan(t('extract.starting', { url: config.fullUrl })))
 					try {
 						browser ??= await chromium.launch({ headless: true })
 						await runExtraction(config, browser)
 					} catch (err) {
-						p.log.error(`Error en la extracción: ${(err as Error).message}`)
+						p.log.error(
+							t('extract.failed', { message: (err as Error).message }),
+						)
 					}
 					break
 				}
 				default: {
-					p.log.warn('Selecciona una opcion valida')
+					p.log.warn(t('extract.invalidOption'))
 				}
 			}
 		}
@@ -320,4 +394,4 @@ async function interactiveMenu(): Promise<void> {
 	}
 }
 
-export { defaultConfig, interactiveMenu }
+export { defaultConfig, interactiveMenu, promptFirstRunLocale }

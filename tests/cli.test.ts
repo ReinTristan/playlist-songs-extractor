@@ -1,40 +1,106 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, it } from 'node:test'
-import { normalizeUrl, parseMaxVideos } from '../src/utils.ts'
+import { normalizeUrl, parseLangFlag, parsePositiveInt } from '../src/utils.ts'
+
+/**
+ * El CLI se spawnea con idioma fijo y un conf aislado: así las aserciones no
+ * dependen ni del locale del sistema ni de la preferencia guardada del usuario
+ * que corre los tests.
+ */
+function runCli(args: string[]) {
+	return spawnSync('node', ['src/index.ts', ...args], {
+		stdio: 'pipe',
+		timeout: 20000,
+		env: {
+			...process.env,
+			PLAYLIST_LANG: 'en',
+			PLAYLIST_CONFIG_DIR: mkdtempSync(path.join(tmpdir(), 'ple-test-')),
+		},
+	})
+}
 
 describe('cli main() sin TTY y sin argv ', () => {
 	it('sale con código 1 e imprime uso cuando no hay argv ni TTY', () => {
-		const result = spawnSync('node', ['src/index.ts'], {
-			stdio: 'pipe',
-			timeout: 10000,
-		})
+		const result = runCli([])
 		assert.equal(result.status, 1)
-		assert.match(result.stderr.toString(), /uso/i)
+		assert.match(result.stderr.toString(), /usage/i)
 	})
 })
 
-describe('parseMaxVideos', () => {
+describe('cli main() con locale inválido', () => {
+	it('sale con código 1 y lista los idiomas disponibles', () => {
+		const result = runCli(['--lang=de', 'https://youtube.com/playlist?list=X'])
+		assert.equal(result.status, 1)
+		assert.match(result.stderr.toString(), /unsupported language/i)
+	})
+})
+
+describe('cli main() con límite inválido', () => {
+	it('sale con código 1 sin abrir el navegador', () => {
+		const result = runCli(['https://youtube.com/playlist?list=X', 'todos'])
+		assert.equal(result.status, 1)
+		assert.match(result.stderr.toString(), /invalid limit/i)
+	})
+})
+
+describe('parsePositiveInt', () => {
 	it('acepta enteros >= 1', () => {
-		assert.equal(parseMaxVideos('5'), 5)
-		assert.equal(parseMaxVideos('1'), 1)
+		assert.equal(parsePositiveInt('5'), 5)
+		assert.equal(parsePositiveInt('1'), 1)
+		assert.equal(parsePositiveInt(' 10 '), 10)
 	})
-	it('acepta vacío y "todos" como sin límite', () => {
-		assert.equal(parseMaxVideos(''), Infinity)
-		assert.equal(parseMaxVideos('todos'), Infinity)
-		assert.equal(parseMaxVideos('TODOS'), Infinity)
+	it('rechaza vacío y espacios (el "todos" ahora es allVideos, no una palabra)', () => {
+		assert.equal(parsePositiveInt(''), null)
+		assert.equal(parsePositiveInt(' '), null)
+		assert.equal(parsePositiveInt(undefined), null)
+		assert.equal(parsePositiveInt(null), null)
 	})
-	it('rechaza "0"', () => {
-		assert.equal(parseMaxVideos('0'), null)
+	it('rechaza las palabras que antes significaban "sin límite"', () => {
+		assert.equal(parsePositiveInt('todos'), null)
+		assert.equal(parsePositiveInt('all'), null)
 	})
-	it('rechaza negativos', () => {
-		assert.equal(parseMaxVideos('-3'), null)
+	it('rechaza "0", negativos y no numéricos', () => {
+		assert.equal(parsePositiveInt('0'), null)
+		assert.equal(parsePositiveInt('-3'), null)
+		assert.equal(parsePositiveInt('abc'), null)
+		assert.equal(parsePositiveInt('1.5'), null)
 	})
-	it('espacio en blanco cae a sin límite (cambio deliberado vs. bug original)', () => {
-		assert.equal(parseMaxVideos(' '), Infinity)
+})
+
+describe('parseLangFlag', () => {
+	it('lee --lang=<code> y lo saca de los posicionales', () => {
+		assert.deepEqual(parseLangFlag(['URL', '10', '--lang=fr']), {
+			lang: 'fr',
+			rest: ['URL', '10'],
+		})
 	})
-	it('rechaza no numéricos', () => {
-		assert.equal(parseMaxVideos('abc'), null)
+	it('lee --lang <code> como dos argumentos', () => {
+		assert.deepEqual(parseLangFlag(['--lang', 'es', 'URL']), {
+			lang: 'es',
+			rest: ['URL'],
+		})
+	})
+	it('acepta el alias --locale', () => {
+		assert.deepEqual(parseLangFlag(['--locale=en', 'URL']), {
+			lang: 'en',
+			rest: ['URL'],
+		})
+	})
+	it('funciona con el flag antes de los posicionales sin alterar su orden', () => {
+		assert.deepEqual(parseLangFlag(['--lang=fr', 'URL', '10']), {
+			lang: 'fr',
+			rest: ['URL', '10'],
+		})
+	})
+	it('sin flag deja el argv intacto', () => {
+		assert.deepEqual(parseLangFlag(['URL', '10']), {
+			lang: undefined,
+			rest: ['URL', '10'],
+		})
 	})
 })
 

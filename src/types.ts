@@ -69,27 +69,31 @@ export interface Song {
 	startTimestamp: string
 }
 
-/** Formatos de archivo que puede generar la extracción (fuente única). */
-export const FORMATS = [
-	{ value: 'json', label: 'JSON' },
-	{ value: 'csv', label: 'CSV' },
-	{ value: 'xlsx', label: 'Excel (XLSX)' },
-] as const
-export type Format = (typeof FORMATS)[number]['value']
+/**
+ * Formatos de archivo que puede generar la extracción (fuente única).
+ * Los labels visibles viven en `locales/` (`formatLabel` en `i18n.ts`).
+ */
+export const FORMATS = ['json', 'csv', 'xlsx'] as const
+export type Format = (typeof FORMATS)[number]
 
-/** Modos de orden de canciones (opción experimental, fuente única). */
+/**
+ * Modos de orden de canciones (opción experimental, fuente única).
+ * Los labels visibles viven en `locales/` (`songOrderLabel` en `i18n.ts`).
+ */
 export const SONG_ORDERS = [
-	{ value: 'original', label: 'Original (como en YouTube)' },
-	{ value: 'reverse', label: 'Invertido' },
-	{ value: 'alphabetical-asc', label: 'Alfabético (A→Z)' },
-	{ value: 'alphabetical-desc', label: 'Alfabético (Z→A)' },
-	{ value: 'shuffle', label: 'Aleatorio' },
+	'original',
+	'reverse',
+	'alphabetical-asc',
+	'alphabetical-desc',
+	'shuffle',
 ] as const
-export type SongOrder = (typeof SONG_ORDERS)[number]['value']
+export type SongOrder = (typeof SONG_ORDERS)[number]
+
 /** Configuración de una extracción, ajustable desde el CLI. */
 export interface ExtractConfig {
 	fullUrl: string
-	maxVideos: number // Infinity = todos
+	allVideos: boolean // true = procesar todos (ignora maxVideos)
+	maxVideos: number // límite entero ≥ 1, solo si allVideos es false
 	formats: Set<Format>
 	expandAlbums: boolean
 	columns: (keyof Song)[] // subconjunto de las keys de COLUMNS, en el orden de salida deseado
@@ -117,23 +121,28 @@ export interface YoutubePageHTML extends Window {
 // Columnas de salida
 // ---------------------------------------------------------------------------
 
-export const COLUMNS: { header: string; key: keyof Song; width: number }[] = [
-	{ header: 'Posición', key: 'position', width: 10 },
-	{ header: 'Artistas', key: 'artists', width: 28 },
-	{ header: 'Featured', key: 'featuredArtists', width: 22 },
-	{ header: 'Canción', key: 'songTitle', width: 34 },
-	{ header: 'Tipo de mezcla', key: 'mixType', width: 16 },
-	{ header: 'Géneros', key: 'genres', width: 18 },
-	{ header: 'Título original', key: 'rawTitle', width: 42 },
-	{ header: 'Canal', key: 'channel', width: 24 },
-	{ header: 'Tipo de video', key: 'videoType', width: 14 },
-	{ header: 'Disponibilidad', key: 'availability', width: 14 },
-	{ header: 'Duración', key: 'duration', width: 10 },
-	{ header: 'Video ID', key: 'videoId', width: 14 },
-	{ header: 'URL', key: 'url', width: 44 },
-	{ header: 'Thumbnail', key: 'thumbnail', width: 44 },
-	{ header: 'Video padre', key: 'parentVideoId', width: 14 },
-	{ header: 'Timestamp', key: 'startTimestamp', width: 12 },
+/**
+ * Columnas de salida en su orden canónico. La `key` es la del dominio (`Song`)
+ * y no cambia con el idioma; el header visible se resuelve con `columnHeader`
+ * de `i18n.ts` contra `columns.<key>` en `locales/`.
+ */
+export const COLUMNS: { key: keyof Song; width: number }[] = [
+	{ key: 'position', width: 10 },
+	{ key: 'artists', width: 28 },
+	{ key: 'featuredArtists', width: 22 },
+	{ key: 'songTitle', width: 34 },
+	{ key: 'mixType', width: 16 },
+	{ key: 'genres', width: 18 },
+	{ key: 'rawTitle', width: 42 },
+	{ key: 'channel', width: 24 },
+	{ key: 'videoType', width: 14 },
+	{ key: 'availability', width: 14 },
+	{ key: 'duration', width: 10 },
+	{ key: 'videoId', width: 14 },
+	{ key: 'url', width: 44 },
+	{ key: 'thumbnail', width: 44 },
+	{ key: 'parentVideoId', width: 14 },
+	{ key: 'startTimestamp', width: 12 },
 ]
 
 export type Column = (typeof COLUMNS)[number]
