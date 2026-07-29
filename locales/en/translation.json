@@ -1,0 +1,112 @@
+{
+	"firstRun": {
+		"saved": "Language saved: {{language}}"
+	},
+	"menu": {
+		"title": " Playlist Extractor ",
+		"prompt": "Adjust the options, then extract",
+		"url": "Playlist URL",
+		"max": "Video limit",
+		"formats": "Output formats",
+		"expand": "Expand albums/mixes",
+		"columns": "Columns to save",
+		"columnOrder": "Column order",
+		"extra": "Extra options",
+		"language": "Language",
+		"extract": "▶ Extract",
+		"quit": "Quit",
+		"bye": "See you!"
+	},
+	"hints": {
+		"unset": "not set",
+		"yes": "yes",
+		"no": "no",
+		"none": "none enabled",
+		"excludeUnavailable": "exclude unavailable"
+	},
+	"prompts": {
+		"url": "YouTube playlist URL or ID",
+		"urlPlaceholder": "https://www.youtube.com/playlist?list=...",
+		"urlInvalid": "Enter a URL or ID",
+		"maxMode": "Video limit",
+		"maxAll": "All",
+		"maxCustom": "Set a number…",
+		"maxNumber": "How many videos? (integer ≥ 1)",
+		"maxInvalid": "Enter an integer ≥ 1",
+		"formats": "Output formats (space to toggle)",
+		"expand": "Expand long albums/mixes into individual songs?",
+		"columns": "Columns to save (space to toggle)",
+		"columnOrder": "Reorder columns (pick one to move it, or finish)",
+		"columnOrderDone": "✔ Done",
+		"columnMove": "Move \"{{column}}\"",
+		"moveUp": "↑ Move up",
+		"moveDown": "↓ Move down",
+		"cancel": "Cancel",
+		"extra": "Extra options (experimental, disabled by default)",
+		"extraSongOrder": "Song order",
+		"extraExclude": "Exclude unavailable",
+		"back": "← Back to the main menu",
+		"songOrder": "Song order in the output",
+		"excludeUnavailable": "Exclude unavailable songs (private/deleted) from the output?",
+		"language": "Language of the CLI and the exported files"
+	},
+	"columns": {
+		"position": "Position",
+		"artists": "Artists",
+		"featuredArtists": "Featured",
+		"songTitle": "Song",
+		"mixType": "Mix type",
+		"genres": "Genres",
+		"rawTitle": "Original title",
+		"channel": "Channel",
+		"videoType": "Video type",
+		"availability": "Availability",
+		"duration": "Duration",
+		"videoId": "Video ID",
+		"url": "URL",
+		"thumbnail": "Thumbnail",
+		"parentVideoId": "Parent video",
+		"startTimestamp": "Timestamp"
+	},
+	"formats": {
+		"json": "JSON",
+		"csv": "CSV",
+		"xlsx": "Excel (XLSX)"
+	},
+	"songOrders": {
+		"original": "Original (as on YouTube)",
+		"reverse": "Reversed",
+		"alphabetical-asc": "Alphabetical (A→Z)",
+		"alphabetical-desc": "Alphabetical (Z→A)",
+		"shuffle": "Shuffled"
+	},
+	"extract": {
+		"needUrl": "Set the playlist URL first.",
+		"starting": "Extracting: {{url}}",
+		"failed": "Extraction failed: {{message}}",
+		"invalidOption": "Pick a valid option",
+		"openingBrowser": "▶ Opening the browser…",
+		"reading": "▶ Reading the playlist…",
+		"found_one": "  ✓ {{count}} video found in \"{{title}}\"",
+		"found_other": "  ✓ {{count}} videos found in \"{{title}}\"",
+		"candidates_one": "▶ Fetching the tracklist of {{count}} album/mix candidate…",
+		"candidates_other": "▶ Fetching tracklists of {{count}} album/mix candidates…",
+		"tracks_one": "  ✓ \"{{title}}…\" → {{count}} track",
+		"tracks_other": "  ✓ \"{{title}}…\" → {{count}} tracks",
+		"noTracklist": "  · \"{{title}}…\" → no detectable tracklist",
+		"descriptionFailed": "  ⚠ Could not read the description of {{videoId}}: {{message}}",
+		"done_one": "\n✅ Done: {{count}} song exported",
+		"done_other": "\n✅ Done: {{count}} songs exported",
+		"outputPath": "   {{dir}}/  ({{files}})"
+	},
+	"output": {
+		"sheetName": "Songs",
+		"unavailableTitle": "[Unavailable]"
+	},
+	"errors": {
+		"usage": "Usage: node src/index.ts \"PLAYLIST_URL\" [maxVideos] [--lang=<code>]\n(with no arguments and no interactive terminal there is nothing to do)",
+		"invalidLimit": "Invalid limit: \"{{value}}\". Use an integer ≥ 1, or omit it to process every video.",
+		"invalidLang": "Unsupported language: \"{{value}}\". Available: {{available}}.",
+		"fatal": "✖ Error:"
+	}
+}

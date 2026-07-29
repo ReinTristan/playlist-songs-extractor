@@ -1,0 +1,112 @@
+{
+	"firstRun": {
+		"saved": "Idioma guardado: {{language}}"
+	},
+	"menu": {
+		"title": " Playlist Extractor ",
+		"prompt": "Ajusta las opciones y luego extrae",
+		"url": "URL de la playlist",
+		"max": "Límite de videos",
+		"formats": "Formatos de salida",
+		"expand": "Expandir álbumes/mixes",
+		"columns": "Columnas a guardar",
+		"columnOrder": "Orden de columnas",
+		"extra": "Opciones extra",
+		"language": "Idioma",
+		"extract": "▶ Extraer",
+		"quit": "Salir",
+		"bye": "¡Hasta luego!"
+	},
+	"hints": {
+		"unset": "sin definir",
+		"yes": "sí",
+		"no": "no",
+		"none": "ninguna activa",
+		"excludeUnavailable": "excluir no disp."
+	},
+	"prompts": {
+		"url": "URL o ID de la playlist de YouTube",
+		"urlPlaceholder": "https://www.youtube.com/playlist?list=...",
+		"urlInvalid": "Ingresa una URL o ID",
+		"maxMode": "Límite de videos",
+		"maxAll": "Todos",
+		"maxCustom": "Definir un número…",
+		"maxNumber": "¿Cuántos videos? (entero ≥ 1)",
+		"maxInvalid": "Ingresa un entero ≥ 1",
+		"formats": "Formatos de salida (espacio para alternar)",
+		"expand": "¿Expandir álbumes/mixes largos en canciones individuales?",
+		"columns": "Columnas a guardar (espacio para alternar)",
+		"columnOrder": "Reordenar columnas (elige una para moverla, o termina)",
+		"columnOrderDone": "✔ Listo",
+		"columnMove": "Mover \"{{column}}\"",
+		"moveUp": "↑ Subir",
+		"moveDown": "↓ Bajar",
+		"cancel": "Cancelar",
+		"extra": "Opciones extra (experimentales, desactivadas por defecto)",
+		"extraSongOrder": "Orden de canciones",
+		"extraExclude": "Excluir no disponibles",
+		"back": "← Volver al menú principal",
+		"songOrder": "Orden de las canciones en el output",
+		"excludeUnavailable": "¿Excluir canciones no disponibles (privadas/borradas) del output?",
+		"language": "Idioma del CLI y de los archivos exportados"
+	},
+	"columns": {
+		"position": "Posición",
+		"artists": "Artistas",
+		"featuredArtists": "Featured",
+		"songTitle": "Canción",
+		"mixType": "Tipo de mezcla",
+		"genres": "Géneros",
+		"rawTitle": "Título original",
+		"channel": "Canal",
+		"videoType": "Tipo de video",
+		"availability": "Disponibilidad",
+		"duration": "Duración",
+		"videoId": "Video ID",
+		"url": "URL",
+		"thumbnail": "Thumbnail",
+		"parentVideoId": "Video padre",
+		"startTimestamp": "Timestamp"
+	},
+	"formats": {
+		"json": "JSON",
+		"csv": "CSV",
+		"xlsx": "Excel (XLSX)"
+	},
+	"songOrders": {
+		"original": "Original (como en YouTube)",
+		"reverse": "Invertido",
+		"alphabetical-asc": "Alfabético (A→Z)",
+		"alphabetical-desc": "Alfabético (Z→A)",
+		"shuffle": "Aleatorio"
+	},
+	"extract": {
+		"needUrl": "Primero define la URL de la playlist.",
+		"starting": "Extrayendo: {{url}}",
+		"failed": "Error en la extracción: {{message}}",
+		"invalidOption": "Selecciona una opción válida",
+		"openingBrowser": "▶ Abriendo navegador…",
+		"reading": "▶ Leyendo la playlist…",
+		"found_one": "  ✓ {{count}} video encontrado en \"{{title}}\"",
+		"found_other": "  ✓ {{count}} videos encontrados en \"{{title}}\"",
+		"candidates_one": "▶ Extrayendo el tracklist de {{count}} candidato a álbum/mix…",
+		"candidates_other": "▶ Extrayendo tracklists de {{count}} candidatos a álbum/mix…",
+		"tracks_one": "  ✓ \"{{title}}…\" → {{count}} pista",
+		"tracks_other": "  ✓ \"{{title}}…\" → {{count}} pistas",
+		"noTracklist": "  · \"{{title}}…\" → sin tracklist detectable",
+		"descriptionFailed": "  ⚠ No se pudo leer la descripción de {{videoId}}: {{message}}",
+		"done_one": "\n✅ Listo: {{count}} canción exportada",
+		"done_other": "\n✅ Listo: {{count}} canciones exportadas",
+		"outputPath": "   {{dir}}/  ({{files}})"
+	},
+	"output": {
+		"sheetName": "Canciones",
+		"unavailableTitle": "[No disponible]"
+	},
+	"errors": {
+		"usage": "Uso: node src/index.ts \"URL_DE_PLAYLIST\" [maxVideos] [--lang=<código>]\n(sin argumentos y sin terminal interactiva no hay nada que hacer)",
+		"invalidLimit": "Límite inválido: \"{{value}}\". Usa un entero ≥ 1, u omítelo para procesar todos los videos.",
+		"invalidLang": "Idioma no soportado: \"{{value}}\". Disponibles: {{available}}.",
+		"fatal": "✖ Error:"
+	}
+}

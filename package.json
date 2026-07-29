@@ -20,8 +20,11 @@
 	"dependencies": {
 		"@biomejs/biome": "^2.5.0",
 		"@clack/prompts": "^1.7.0",
+		"conf": "^15.1.0",
 		"dayjs": "^1.11.19",
 		"exceljs": "^4.4.0",
+		"i18next": "^26.3.6",
+		"i18next-fs-backend": "^2.6.6",
 		"picocolors": "^1.1.1"
 	}
 }

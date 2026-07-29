@@ -1,0 +1,112 @@
+{
+	"firstRun": {
+		"saved": "Langue enregistrée : {{language}}"
+	},
+	"menu": {
+		"title": " Playlist Extractor ",
+		"prompt": "Ajustez les options, puis lancez l'extraction",
+		"url": "URL de la playlist",
+		"max": "Limite de vidéos",
+		"formats": "Formats de sortie",
+		"expand": "Développer les albums/mixes",
+		"columns": "Colonnes à enregistrer",
+		"columnOrder": "Ordre des colonnes",
+		"extra": "Options supplémentaires",
+		"language": "Langue",
+		"extract": "▶ Extraire",
+		"quit": "Quitter",
+		"bye": "À bientôt !"
+	},
+	"hints": {
+		"unset": "non définie",
+		"yes": "oui",
+		"no": "non",
+		"none": "aucune activée",
+		"excludeUnavailable": "exclure indispo."
+	},
+	"prompts": {
+		"url": "URL ou ID de la playlist YouTube",
+		"urlPlaceholder": "https://www.youtube.com/playlist?list=...",
+		"urlInvalid": "Saisissez une URL ou un ID",
+		"maxMode": "Limite de vidéos",
+		"maxAll": "Toutes",
+		"maxCustom": "Définir un nombre…",
+		"maxNumber": "Combien de vidéos ? (entier ≥ 1)",
+		"maxInvalid": "Saisissez un entier ≥ 1",
+		"formats": "Formats de sortie (espace pour basculer)",
+		"expand": "Développer les longs albums/mixes en chansons individuelles ?",
+		"columns": "Colonnes à enregistrer (espace pour basculer)",
+		"columnOrder": "Réordonner les colonnes (choisissez-en une à déplacer, ou terminez)",
+		"columnOrderDone": "✔ Terminé",
+		"columnMove": "Déplacer « {{column}} »",
+		"moveUp": "↑ Monter",
+		"moveDown": "↓ Descendre",
+		"cancel": "Annuler",
+		"extra": "Options supplémentaires (expérimentales, désactivées par défaut)",
+		"extraSongOrder": "Ordre des chansons",
+		"extraExclude": "Exclure les indisponibles",
+		"back": "← Retour au menu principal",
+		"songOrder": "Ordre des chansons dans le fichier de sortie",
+		"excludeUnavailable": "Exclure les chansons indisponibles (privées/supprimées) de la sortie ?",
+		"language": "Langue du CLI et des fichiers exportés"
+	},
+	"columns": {
+		"position": "Position",
+		"artists": "Artistes",
+		"featuredArtists": "Featuring",
+		"songTitle": "Chanson",
+		"mixType": "Type de mix",
+		"genres": "Genres",
+		"rawTitle": "Titre original",
+		"channel": "Chaîne",
+		"videoType": "Type de vidéo",
+		"availability": "Disponibilité",
+		"duration": "Durée",
+		"videoId": "ID vidéo",
+		"url": "URL",
+		"thumbnail": "Miniature",
+		"parentVideoId": "Vidéo parente",
+		"startTimestamp": "Horodatage"
+	},
+	"formats": {
+		"json": "JSON",
+		"csv": "CSV",
+		"xlsx": "Excel (XLSX)"
+	},
+	"songOrders": {
+		"original": "Original (comme sur YouTube)",
+		"reverse": "Inversé",
+		"alphabetical-asc": "Alphabétique (A→Z)",
+		"alphabetical-desc": "Alphabétique (Z→A)",
+		"shuffle": "Aléatoire"
+	},
+	"extract": {
+		"needUrl": "Définissez d'abord l'URL de la playlist.",
+		"starting": "Extraction : {{url}}",
+		"failed": "Échec de l'extraction : {{message}}",
+		"invalidOption": "Choisissez une option valide",
+		"openingBrowser": "▶ Ouverture du navigateur…",
+		"reading": "▶ Lecture de la playlist…",
+		"found_one": "  ✓ {{count}} vidéo trouvée dans « {{title}} »",
+		"found_other": "  ✓ {{count}} vidéos trouvées dans « {{title}} »",
+		"candidates_one": "▶ Récupération de la tracklist de {{count}} album/mix candidat…",
+		"candidates_other": "▶ Récupération des tracklists de {{count}} albums/mixes candidats…",
+		"tracks_one": "  ✓ « {{title}}… » → {{count}} piste",
+		"tracks_other": "  ✓ « {{title}}… » → {{count}} pistes",
+		"noTracklist": "  · « {{title}}… » → aucune tracklist détectable",
+		"descriptionFailed": "  ⚠ Impossible de lire la description de {{videoId}} : {{message}}",
+		"done_one": "\n✅ Terminé : {{count}} chanson exportée",
+		"done_other": "\n✅ Terminé : {{count}} chansons exportées",
+		"outputPath": "   {{dir}}/  ({{files}})"
+	},
+	"output": {
+		"sheetName": "Chansons",
+		"unavailableTitle": "[Indisponible]"
+	},
+	"errors": {
+		"usage": "Utilisation : node src/index.ts \"URL_DE_PLAYLIST\" [maxVideos] [--lang=<code>]\n(sans arguments et sans terminal interactif, il n'y a rien à faire)",
+		"invalidLimit": "Limite invalide : « {{value}} ». Utilisez un entier ≥ 1, ou omettez-la pour traiter toutes les vidéos.",
+		"invalidLang": "Langue non prise en charge : « {{value}} ». Disponibles : {{available}}.",
+		"fatal": "✖ Erreur :"
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"fallbackLng": "en",
+	"languages": [
+		{
+			"code": "en",
+			"nativeName": "English",
+			"firstRun": {
+				"detected": "Detected language: English. Use it?",
+				"choose": "Choose a language"
+			}
+		},
+		{
+			"code": "es",
+			"nativeName": "Español",
+			"firstRun": {
+				"detected": "Idioma detectado: Español. ¿Usarlo?",
+				"choose": "Elegí un idioma"
+			}
+		},
+		{
+			"code": "fr",
+			"nativeName": "Français",
+			"firstRun": {
+				"detected": "Langue détectée : Français. L'utiliser ?",
+				"choose": "Choisissez une langue"
+			}
+		}
+	]
+}
