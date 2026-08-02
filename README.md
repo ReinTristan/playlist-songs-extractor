@@ -55,8 +55,17 @@ row by just changing the URL. Configurable options:
     renumbered sequentially (1, 2, 3…) instead of keeping the original playlist position.
   - _Exclude unavailable_ — drop private/deleted videos from the output instead of
     including them with empty fields.
+  - _Remove duplicates_ — drop songs that repeat within the playlist. Expanded album/mix
+    tracks are never collapsed together: they share a source video but differ by timestamp.
+  - _Album/mix threshold_ — from how many minutes a video is treated as an album/mix and
+    opened to read its tracklist (18 by default).
+  - _Filter by video type_ — keep only singles, albums, mixes, or unknown.
+  - _Filter by genre_ — comma-separated list; a song is kept if it matches any of them.
 - **Language** — switch language on the spot; the menu re-renders in it and the choice is
   saved for the next run.
+
+Your settings and the last playlist URLs you used are saved between sessions, so the menu
+starts where you left off and offers recent playlists instead of making you retype them.
 
 ### Quick mode (non-interactive)
 
@@ -100,10 +109,31 @@ PLAYLIST_LANG=fr bun src/index.ts "URL" # equivalent via environment variable
 The flag can go anywhere in the argument list, and it is a one-off override: unlike the
 interactive menu, it does **not** change the saved preference.
 
+#### Options
+
+Everything the interactive menu offers has a flag, so a run can be scripted:
+
+| Flag | Example | What it does |
+| --- | --- | --- |
+| `--formats=` | `--formats=json,csv` | Which files to write (`json`, `csv`, `xlsx`). |
+| `--columns=` | `--columns=position,artists,songTitle` | Which columns to write, in that order. |
+| `--no-expand` / `--expand` | `--no-expand` | Whether long albums/mixes are expanded into their tracks. |
+| `--song-order=` | `--song-order=shuffle` | `original`, `reverse`, `alphabetical-asc`, `alphabetical-desc`, `shuffle`. |
+| `--exclude-unavailable` | | Drop private/deleted videos. |
+| `--dedupe` | | Drop repeated songs. |
+| `--long-video-minutes=` | `--long-video-minutes=30` | Album/mix threshold, in minutes. |
+| `--video-types=` | `--video-types=single,mix` | Keep only these video types. |
+| `--genres=` | `--genres=dubstep,deep house` | Keep only songs matching any of these genres. |
+
+An unknown flag or an unsupported value exits with code 1 and lists what is accepted,
+instead of running the extraction with something you did not mean.
+
 #### Full example
 
 ```bash
 bun src/index.ts "https://www.youtube.com/playlist?list=PLRBp0Fe2GpgnIh0AiYKh7o7HnYAej-5ph" 5
+
+bun src/index.ts "URL" --formats=json --columns=position,artists,songTitle --dedupe
 ```
 
 ## Language
