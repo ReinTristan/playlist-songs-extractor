@@ -123,3 +123,22 @@ Match the existing history, which is deliberately not Conventional Commits:
 - The body is optional and free-form: extra sentences separated by blank lines, or a numbered list when several distinct things were solved (see `Solved two crucial bugs in the app:`).
 - **No trailers.** No `Co-Authored-By:`, no `Generated with…` line — the history has zero of them and these commits should not stand out from the rest. This overrides the global instruction to sign commits.
 - Write the message as Reinhard would write it, but with correct spelling: the history has typos (`Implmentation`, `indext.ts`, `imporst`) — those are not part of the style to imitate.
+
+### Signing the batch, in prose
+
+There are no trailers, but the authorship still has to be obvious to anyone reading `git log` later — so the batch gets bookended. The **first** and the **last** commit of the batch each close their body with one extra line, separated by a blank line from the rest:
+
+- First commit, last line of the body:
+
+  > Reinhard was bored, so it is my turn to commit: this opens a batch of N commits made by Claude.
+
+- Last commit, last line of the body:
+
+  > And that closes the batch: N commits made by Claude while Reinhard rested, he is back now.
+
+Rules for those two lines:
+
+- `N` is the real number of commits in the batch, known before the first one is created — the split is planned and approved up front, so it never has to be guessed or corrected afterwards.
+- If the batch turns out to be a **single** commit, it gets one combined line instead of two: *"Reinhard was bored, so this one is mine: a single commit made by Claude."*
+- The commits **in between** carry no such line. Two mentions bookending the range are enough to make the boundaries readable; one per commit is noise.
+- These lines are prose inside the body, deliberately **not** a `Co-Authored-By:` trailer — they say who typed the commits without polluting the history with machine-readable metadata that no other commit has.
