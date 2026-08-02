@@ -92,53 +92,12 @@ Each run creates `output/<channel>-<playlist title>_<YYYY-MM-DD_HH-mm-ss>/` (wit
 
 ## "Reinhard was bored, so it's my turn to commit"
 
-That sentence (or anything close to it — *"me dio pereza commitear"*, "your turn to commit", "split this mess for me") is the trigger: the working tree is a big unstaged batch of work and Claude has to slice it into a sequence of commits instead of dumping everything into one. **It is a trigger for staging and committing, never for pushing** — pushing still needs to be asked for explicitly.
+That sentence — or anything close to it (*"me dio pereza commitear"*, "your turn to commit", "split this mess for me") — means the working tree is a batch of unstaged work that Claude has to slice into a sequence of commits instead of dumping everything into one. The procedure itself is not repeated here: the layer order, the confirmation question, the message style, the two prose lines that credit the batch and the don'ts all live in the personal skill **`reintristan-lazy-commits`**. Invoke it and follow it.
 
-### The slicing order
+Only the parts that are specific to this repo:
 
-The work is committed in layers, from context outwards, so that reading `git log` backwards tells the story of the feature before showing its wiring:
-
-1. **Dependencies** — `package.json` + `pnpm-lock.yaml` + `pnpm-workspace.yaml`, and only if new packages were added. This goes first so that no later commit in the batch describes code that cannot even be installed.
-2. **Docs / context** — `CLAUDE.md`, `README.md`, `ToDo.md`, anything explaining *what* the new feature is and *why*. This is the commit that carries the reasoning.
-3. **Tests** — everything under `tests/` (including `tests/helpers/`). We work TDD here, so the tests are the executable spec and land before the implementation.
-4. **Locales** — `locales/meta.json` and `locales/<lng>/translation.json`. They come *before* the feature commit on purpose: `tests/i18n.test.ts` fails on any key missing from a language, so committing tests with the translations still uncommitted would leave a commit whose `pnpm test` is red. Data before logic.
-5. **Feature code** — `src/*.ts`. The actual implementation, split further by concern when the batch is large (e.g. `types.ts` + `utils.ts` in one commit, then `extractor.ts`, then `cli.ts`/`index.ts`) rather than one giant `src/` commit.
-6. **Chores last** — `biome.json`, `.gitignore`, formatting-only churn, and any file that is noise rather than feature.
-
-Rules of thumb when the batch does not fit that shape:
-
-- A file that legitimately belongs to two layers (a `README.md` touched both for the feature *and* for an unrelated typo) goes to the layer it mostly serves; do not use `git add -p` to split a single file across commits unless the two changes are genuinely unrelated.
-- If a layer has no changes, it is skipped silently — no empty commits, no placeholder messages.
-- If the batch contains two unrelated features, run the whole 1→6 sequence for the first one and then again for the second, rather than mixing them in shared "docs" / "tests" commits.
-- Before committing anything, run `pnpm test` and `pnpm exec biome check .`, and say what the result was. A red suite does not block the commits (the batch may be a work in progress) but it has to be reported, not hidden.
-- Show the planned split (which files in which commit, with the messages) and wait for the OK before creating the commits.
-
-### Commit message style
-
-Match the existing history, which is deliberately not Conventional Commits:
-
-- Written in English, in the past tense, describing what was done: `Added…`, `Solved…`, `Improved…`, `Moved…`, `Changed…`, `Removed…`.
-- The subject line is long and specific — the history has subjects of 200+ characters and that is fine here. Prefer a full explanatory sentence over a truncated 50-char summary; never pad a short change into a long line either.
-- No prefixes, no scopes, no emoji, no `feat:`/`fix:`/`chore:`.
-- The body is optional and free-form: extra sentences separated by blank lines, or a numbered list when several distinct things were solved (see `Solved two crucial bugs in the app:`).
-- **No trailers.** No `Co-Authored-By:`, no `Generated with…` line — the history has zero of them and these commits should not stand out from the rest. This overrides the global instruction to sign commits.
-- Write the message as Reinhard would write it, but with correct spelling: the history has typos (`Implmentation`, `indext.ts`, `imporst`) — those are not part of the style to imitate.
-
-### Signing the batch, in prose
-
-There are no trailers, but the authorship still has to be obvious to anyone reading `git log` later — so the batch gets bookended. The **first** and the **last** commit of the batch each close their body with one extra line, separated by a blank line from the rest:
-
-- First commit, last line of the body:
-
-  > Reinhard was bored, so it is my turn to commit: this opens a batch of N commits made by Claude.
-
-- Last commit, last line of the body:
-
-  > And that closes the batch: N commits made by Claude while Reinhard rested, he is back now.
-
-Rules for those two lines:
-
-- `N` is the real number of commits in the batch, known before the first one is created — the split is planned and approved up front, so it never has to be guessed or corrected afterwards.
-- If the batch turns out to be a **single** commit, it gets one combined line instead of two: *"Reinhard was bored, so this one is mine: a single commit made by Claude."*
-- The commits **in between** carry no such line. Two mentions bookending the range are enough to make the boundaries readable; one per commit is noise.
-- These lines are prose inside the body, deliberately **not** a `Co-Authored-By:` trailer — they say who typed the commits without polluting the history with machine-readable metadata that no other commit has.
+- **Test placement is spec-first.** We work TDD here, so the `tests/` commit lands *before* the `src/` one and is red on purpose — that is the expected state, not a problem to fix.
+- **The data layer exists and is not optional**: `locales/meta.json` and `locales/<lng>/translation.json` go before the feature commit, because `tests/i18n.test.ts` fails on any key missing from a language.
+- **Verification before committing**: `pnpm test`, `pnpm exec biome check .` and `pnpm exec tsc --noEmit`.
+- **Splitting `src/` by concern** follows the import chain: `types.ts` + `utils.ts`, then `config.ts` + `i18n.ts`, then `extractor.ts`, then `cli.ts` + `index.ts`, then `debug-dom.ts`.
+- `ToDo.md` is gitignored — it is a scratchpad and never belongs to the docs layer.
