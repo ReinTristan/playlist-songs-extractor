@@ -71,6 +71,27 @@ Sígueme en redes`
 		assert.equal(tracks[0].rawTrackTitle, '11:11 - Dinah Jane')
 	})
 
+	it('no descarta las pistas de tres dígitos en una lista larga', () => {
+		const lines = Array.from(
+			{ length: 105 },
+			(_, i) => `${i + 1}. Artist ${i + 1} - Song ${i + 1}`,
+		)
+		const tracks = parseTracklist(`Top 105\n${lines.join('\n')}`)
+		assert.equal(tracks.length, 105)
+		assert.equal(tracks[104].rawTrackTitle, 'Artist 105 - Song 105')
+	})
+
+	it('limpia el timestamp final aunque la línea numerada ya traiga uno al inicio', () => {
+		const desc = `Album
+1. 0:00 Alpha - One 3:45
+2. Beta - Two
+3. Gamma - Three`
+		const tracks = parseTracklist(desc)
+		assert.equal(tracks.length, 3)
+		assert.equal(tracks[0].startTimestamp, '0:00')
+		assert.equal(tracks[0].rawTrackTitle, 'Alpha - One')
+	})
+
 	it('devuelve vacío cuando no hay un tracklist reconocible', () => {
 		assert.deepEqual(
 			parseTracklist('Solo una descripción normal sin pistas.'),

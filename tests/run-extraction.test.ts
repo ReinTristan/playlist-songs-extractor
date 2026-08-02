@@ -2,18 +2,15 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { runExtraction } from '../src/extractor.ts'
 import type { ExtractConfig } from '../src/types.ts'
+import makeConfig from './helpers/make-config.ts'
 
 function baseConfig(): ExtractConfig {
-	return {
+	return makeConfig({
 		fullUrl: 'https://youtube.com/playlist?list=X',
-		allVideos: true,
-		maxVideos: 50,
 		formats: new Set(['json']),
 		expandAlbums: false,
 		columns: ['position', 'songTitle'],
-		songOrder: 'original',
-		excludeUnavailable: false,
-	}
+	})
 }
 
 describe('runExtraction validación previa', () => {

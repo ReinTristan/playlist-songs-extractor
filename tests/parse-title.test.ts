@@ -30,6 +30,32 @@ describe('parseTitle', () => {
 		assert.ok(r.mixType.toLowerCase().includes('remix'))
 	})
 
+	it('saca el tipo de mezcla entre paréntesis del título de la canción', () => {
+		const r = parseTitle('Calvin Harris - Feel So Close (Nero Remix)')
+		assert.deepEqual(r.artists, ['Calvin Harris'])
+		assert.equal(r.songTitle, 'Feel So Close')
+	})
+
+	it('saca el tipo de mezcla del segmento final tras un guion', () => {
+		const r = parseTitle('Artist - Song - Extended Mix')
+		assert.deepEqual(r.artists, ['Artist'])
+		assert.equal(r.songTitle, 'Song')
+		assert.equal(r.mixType, 'Extended Mix')
+	})
+
+	it('saca el paréntesis de mezcla pero conserva el género que traía adentro', () => {
+		const r = parseTitle('Artist - Song (Deep House Remix)')
+		assert.equal(r.songTitle, 'Song')
+		assert.deepEqual(r.genres, ['deep house'])
+		assert.ok(r.mixType.toLowerCase().includes('remix'))
+	})
+
+	it('no recorta el título cuando la keyword de mezcla está en el medio', () => {
+		const r = parseTitle('Artist - Cover Me In Sunshine')
+		assert.deepEqual(r.artists, ['Artist'])
+		assert.equal(r.songTitle, 'Cover Me In Sunshine')
+	})
+
 	it('marca como original cuando no hay tipo de mezcla', () => {
 		assert.equal(parseTitle('Artist - Song').mixType, 'original')
 	})
@@ -167,6 +193,20 @@ describe('parseTitle', () => {
 		assert.deepEqual(r.artists, ['Artist'])
 		assert.equal(r.songTitle, 'Song')
 		assert.deepEqual(r.genres, ['trance'])
+	})
+
+	it('separa por cualquier variante unicode de guion', () => {
+		// U+002D, U+2010, U+2011, U+2012, U+2013, U+2014, U+2212: visualmente
+		// iguales, y las fuentes/copy-paste traen cualquiera de ellas.
+		for (const dash of ['-', '‐', '‑', '‒', '–', '—', '−']) {
+			const r = parseTitle(`Artist ${dash} Song`)
+			assert.deepEqual(
+				r.artists,
+				['Artist'],
+				`falló con U+${dash.codePointAt(0)?.toString(16)}`,
+			)
+			assert.equal(r.songTitle, 'Song')
+		}
 	})
 
 	it('Multiples artistas por el mismo separador', () => {

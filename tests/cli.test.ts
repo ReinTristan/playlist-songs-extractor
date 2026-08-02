@@ -4,7 +4,12 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, it } from 'node:test'
-import { normalizeUrl, parseLangFlag, parsePositiveInt } from '../src/utils.ts'
+import {
+	normalizeUrl,
+	parseFlags,
+	parseLangFlag,
+	parsePositiveInt,
+} from '../src/utils.ts'
 
 /**
  * El CLI se spawnea con idioma fijo y un conf aislado: así las aserciones no
@@ -101,6 +106,56 @@ describe('parseLangFlag', () => {
 			lang: undefined,
 			rest: ['URL', '10'],
 		})
+	})
+})
+
+describe('parseFlags', () => {
+	it('lee --flag=valor y deja los posicionales intactos', () => {
+		const { flags, rest } = parseFlags(['URL', '--formats=json,csv', '10'])
+		assert.equal(flags.get('formats'), 'json,csv')
+		assert.deepEqual(rest, ['URL', '10'])
+	})
+
+	it('un flag sin valor queda en true', () => {
+		const { flags, rest } = parseFlags(['URL', '--dedupe'])
+		assert.equal(flags.get('dedupe'), true)
+		assert.deepEqual(rest, ['URL'])
+	})
+
+	it('sólo los flags declarados con valor consumen el argumento siguiente', () => {
+		// Sin la lista, "--dedupe" se comería la URL.
+		const { flags, rest } = parseFlags(['--dedupe', 'URL'], ['lang'])
+		assert.equal(flags.get('dedupe'), true)
+		assert.deepEqual(rest, ['URL'])
+	})
+
+	it('acepta --flag valor para los declarados con valor', () => {
+		const { flags, rest } = parseFlags(['--lang', 'fr', 'URL'], ['lang'])
+		assert.equal(flags.get('lang'), 'fr')
+		assert.deepEqual(rest, ['URL'])
+	})
+
+	it('sin flags devuelve el argv como posicionales', () => {
+		const { flags, rest } = parseFlags(['URL', '10'])
+		assert.equal(flags.size, 0)
+		assert.deepEqual(rest, ['URL', '10'])
+	})
+})
+
+describe('cli main() con flags inválidos', () => {
+	it('sale con código 1 ante un valor no soportado', () => {
+		const result = runCli([
+			'https://youtube.com/playlist?list=X',
+			'--formats=pdf',
+		])
+		assert.equal(result.status, 1)
+		assert.match(result.stderr.toString(), /invalid value for --formats/i)
+	})
+
+	it('sale con código 1 ante una opción desconocida', () => {
+		const result = runCli(['https://youtube.com/playlist?list=X', '--turbo'])
+		assert.equal(result.status, 1)
+		assert.match(result.stderr.toString(), /unknown option/i)
 	})
 })
 

@@ -40,6 +40,15 @@ describe('classifyVideoType', () => {
 		)
 	})
 
+	it('un video largo sin keyword se abre pero no se etiqueta como album/mix', () => {
+		// Un extended/concierto de 25 min es candidato (se intenta la tracklist),
+		// pero sin keyword no hay motivo para llamarlo álbum ni mix en el export.
+		assert.deepEqual(
+			classifyVideoType('Artist - Song (Extended)', durationToSeconds('25:00')),
+			{ videoType: 'single', isCandidate: true },
+		)
+	})
+
 	it('una canción corta con (Remix) no es candidato', () => {
 		assert.equal(
 			classifyVideoType('Song (Tiësto Remix)', durationToSeconds('4:10'))
