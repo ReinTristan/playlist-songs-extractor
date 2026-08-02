@@ -22,7 +22,10 @@
 		"yes": "yes",
 		"no": "no",
 		"none": "none enabled",
-		"excludeUnavailable": "exclude unavailable"
+		"excludeUnavailable": "exclude unavailable",
+		"dedupe": "no duplicates",
+		"longVideoMinutes": "≥ {{minutes}} min",
+		"noFilter": "no filter"
 	},
 	"prompts": {
 		"url": "YouTube playlist URL or ID",
@@ -48,7 +51,18 @@
 		"back": "← Back to the main menu",
 		"songOrder": "Song order in the output",
 		"excludeUnavailable": "Exclude unavailable songs (private/deleted) from the output?",
-		"language": "Language of the CLI and the exported files"
+		"language": "Language of the CLI and the exported files",
+		"urlPick": "Pick a recent playlist, or enter a new URL",
+		"urlNew": "Enter another URL…",
+		"dedupe": "Drop duplicated songs?",
+		"longVideoMinutes": "From how many minutes is a video treated as an album/mix?",
+		"videoTypeFilter": "Keep only these video types",
+		"genreFilter": "Keep only these genres (comma separated, empty = all)",
+		"genreFilterPlaceholder": "dubstep, deep house",
+		"extraDedupe": "Remove duplicates",
+		"extraLongVideo": "Album/mix threshold",
+		"extraVideoTypeFilter": "Filter by video type",
+		"extraGenreFilter": "Filter by genre"
 	},
 	"columns": {
 		"position": "Position",
@@ -107,6 +121,16 @@
 		"usage": "Usage: node src/index.ts \"PLAYLIST_URL\" [maxVideos] [--lang=<code>]\n(with no arguments and no interactive terminal there is nothing to do)",
 		"invalidLimit": "Invalid limit: \"{{value}}\". Use an integer ≥ 1, or omit it to process every video.",
 		"invalidLang": "Unsupported language: \"{{value}}\". Available: {{available}}.",
-		"fatal": "✖ Error:"
+		"fatal": "✖ Error:",
+		"pageStatus": "YouTube answered {{status}} for {{url}}. Check that the playlist exists and is public.",
+		"emptyPlaylist": "No videos were found on that page. If the playlist is private or empty there is nothing to export.",
+		"invalidFlagValue": "Invalid value for {{flag}}: \"{{value}}\". Available: {{available}}.",
+		"unknownFlag": "Unknown option: \"{{flag}}\"."
+	},
+	"videoTypes": {
+		"single": "Single",
+		"album": "Album",
+		"mix": "Mix",
+		"unknown": "Unknown"
 	}
 }

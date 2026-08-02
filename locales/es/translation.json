@@ -22,7 +22,10 @@
 		"yes": "sí",
 		"no": "no",
 		"none": "ninguna activa",
-		"excludeUnavailable": "excluir no disp."
+		"excludeUnavailable": "excluir no disp.",
+		"dedupe": "sin duplicados",
+		"longVideoMinutes": "≥ {{minutes}} min",
+		"noFilter": "sin filtro"
 	},
 	"prompts": {
 		"url": "URL o ID de la playlist de YouTube",
@@ -48,7 +51,18 @@
 		"back": "← Volver al menú principal",
 		"songOrder": "Orden de las canciones en el output",
 		"excludeUnavailable": "¿Excluir canciones no disponibles (privadas/borradas) del output?",
-		"language": "Idioma del CLI y de los archivos exportados"
+		"language": "Idioma del CLI y de los archivos exportados",
+		"urlPick": "Elige una playlist reciente, o escribe una URL nueva",
+		"urlNew": "Escribir otra URL…",
+		"dedupe": "¿Descartar canciones repetidas?",
+		"longVideoMinutes": "¿A partir de cuántos minutos se trata un video como álbum/mix?",
+		"videoTypeFilter": "Conservar solo estos tipos de video",
+		"genreFilter": "Conservar solo estos géneros (separados por coma, vacío = todos)",
+		"genreFilterPlaceholder": "dubstep, deep house",
+		"extraDedupe": "Quitar duplicados",
+		"extraLongVideo": "Umbral de álbum/mix",
+		"extraVideoTypeFilter": "Filtrar por tipo de video",
+		"extraGenreFilter": "Filtrar por género"
 	},
 	"columns": {
 		"position": "Posición",
@@ -107,6 +121,16 @@
 		"usage": "Uso: node src/index.ts \"URL_DE_PLAYLIST\" [maxVideos] [--lang=<código>]\n(sin argumentos y sin terminal interactiva no hay nada que hacer)",
 		"invalidLimit": "Límite inválido: \"{{value}}\". Usa un entero ≥ 1, u omítelo para procesar todos los videos.",
 		"invalidLang": "Idioma no soportado: \"{{value}}\". Disponibles: {{available}}.",
-		"fatal": "✖ Error:"
+		"fatal": "✖ Error:",
+		"pageStatus": "YouTube respondió {{status}} para {{url}}. Revisa que la playlist exista y sea pública.",
+		"emptyPlaylist": "No se encontró ningún video en esa página. Si la playlist es privada o está vacía, no hay nada que exportar.",
+		"invalidFlagValue": "Valor inválido para {{flag}}: \"{{value}}\". Disponibles: {{available}}.",
+		"unknownFlag": "Opción desconocida: \"{{flag}}\"."
+	},
+	"videoTypes": {
+		"single": "Canción",
+		"album": "Álbum",
+		"mix": "Mix",
+		"unknown": "Desconocido"
 	}
 }

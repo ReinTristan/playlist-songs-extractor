@@ -22,7 +22,10 @@
 		"yes": "oui",
 		"no": "non",
 		"none": "aucune activée",
-		"excludeUnavailable": "exclure indispo."
+		"excludeUnavailable": "exclure indispo.",
+		"dedupe": "sans doublons",
+		"longVideoMinutes": "≥ {{minutes}} min",
+		"noFilter": "aucun filtre"
 	},
 	"prompts": {
 		"url": "URL ou ID de la playlist YouTube",
@@ -48,7 +51,18 @@
 		"back": "← Retour au menu principal",
 		"songOrder": "Ordre des chansons dans le fichier de sortie",
 		"excludeUnavailable": "Exclure les chansons indisponibles (privées/supprimées) de la sortie ?",
-		"language": "Langue du CLI et des fichiers exportés"
+		"language": "Langue du CLI et des fichiers exportés",
+		"urlPick": "Choisissez une playlist récente, ou saisissez une nouvelle URL",
+		"urlNew": "Saisir une autre URL…",
+		"dedupe": "Écarter les chansons en double ?",
+		"longVideoMinutes": "À partir de combien de minutes une vidéo est-elle traitée comme album/mix ?",
+		"videoTypeFilter": "Ne garder que ces types de vidéo",
+		"genreFilter": "Ne garder que ces genres (séparés par des virgules, vide = tous)",
+		"genreFilterPlaceholder": "dubstep, deep house",
+		"extraDedupe": "Supprimer les doublons",
+		"extraLongVideo": "Seuil album/mix",
+		"extraVideoTypeFilter": "Filtrer par type de vidéo",
+		"extraGenreFilter": "Filtrer par genre"
 	},
 	"columns": {
 		"position": "Position",
@@ -107,6 +121,16 @@
 		"usage": "Utilisation : node src/index.ts \"URL_DE_PLAYLIST\" [maxVideos] [--lang=<code>]\n(sans arguments et sans terminal interactif, il n'y a rien à faire)",
 		"invalidLimit": "Limite invalide : « {{value}} ». Utilisez un entier ≥ 1, ou omettez-la pour traiter toutes les vidéos.",
 		"invalidLang": "Langue non prise en charge : « {{value}} ». Disponibles : {{available}}.",
-		"fatal": "✖ Erreur :"
+		"fatal": "✖ Erreur :",
+		"pageStatus": "YouTube a répondu {{status}} pour {{url}}. Vérifiez que la playlist existe et qu’elle est publique.",
+		"emptyPlaylist": "Aucune vidéo trouvée sur cette page. Si la playlist est privée ou vide, il n’y a rien à exporter.",
+		"invalidFlagValue": "Valeur invalide pour {{flag}} : « {{value}} ». Disponibles : {{available}}.",
+		"unknownFlag": "Option inconnue : « {{flag}} »."
+	},
+	"videoTypes": {
+		"single": "Titre",
+		"album": "Album",
+		"mix": "Mix",
+		"unknown": "Inconnu"
 	}
 }
