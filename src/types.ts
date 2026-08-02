@@ -20,7 +20,7 @@ export interface PlaylistVideo {
 	duration: string
 	durationSeconds: number
 	availability: 'available' | 'unavailable'
-	videoType: 'single' | 'album' | 'mix' | 'unknown'
+	videoType: VideoType
 	isCandidate: boolean
 }
 
@@ -89,6 +89,10 @@ export const SONG_ORDERS = [
 ] as const
 export type SongOrder = (typeof SONG_ORDERS)[number]
 
+/** Tipo de video tal como lo clasifica `classifyVideoType` (fuente única). */
+export const VIDEO_TYPES = ['single', 'album', 'mix', 'unknown'] as const
+export type VideoType = (typeof VIDEO_TYPES)[number]
+
 /** Configuración de una extracción, ajustable desde el CLI. */
 export interface ExtractConfig {
 	fullUrl: string
@@ -99,6 +103,10 @@ export interface ExtractConfig {
 	columns: (keyof Song)[] // subconjunto de las keys de COLUMNS, en el orden de salida deseado
 	songOrder: SongOrder // default 'original' (opción extra, desactivada por defecto)
 	excludeUnavailable: boolean // default false (opción extra, desactivada por defecto)
+	longVideoSeconds: number // umbral de "video largo" (default LONG_VIDEO_SECONDS)
+	dedupe: boolean // default false: descarta canciones repetidas
+	videoTypeFilter: VideoType[] | null // null = sin filtrar
+	genreFilter: string[] | null // null = sin filtrar
 	onProgress?: (message: string) => void // default: console.log
 }
 
@@ -277,6 +285,30 @@ export const NOISE_PATTERNS: RegExp[] = [
 ]
 
 // ---------------------------------------------------------------------------
+// Separadores
+// ---------------------------------------------------------------------------
+
+/**
+ * Guiones aceptados como separador "artista - canción".
+ *
+ * No alcanza con el guion ASCII y los de tipografía (en dash, em dash): hay
+ * fuentes/copy-paste que traen HYPHEN (U+2010), NON-BREAKING HYPHEN (U+2011),
+ * FIGURE DASH (U+2012) o MINUS SIGN (U+2212), visualmente idénticos. Si falta
+ * alguno, el título entero queda como nombre de canción sin artista.
+ *
+ * El `-` va escapado para poder interpolar esta cadena en cualquier posición
+ * de un `[...]` sin que se lea como rango (`[.)-‐]` sería el rango
+ * `)`–`‐`, que se traga dígitos y letras).
+ */
+export const DASH_CHARS = '\\-\\u2010\\u2011\\u2012\\u2013\\u2014\\u2212'
+
+/** Clase de caracteres lista para interpolar en una regex. */
+export const DASH_CLASS = `[${DASH_CHARS}]`
+
+/** Numeración de una pista en una tracklist ("1.", "12)", "100 - "). */
+export const TRACK_NUMBER_PATTERN = `\\d{1,3}\\s*[.)${DASH_CHARS}]`
+
+// ---------------------------------------------------------------------------
 // Gramática de timestamps
 // ---------------------------------------------------------------------------
 
@@ -285,12 +317,12 @@ export const TS_PATTERN = '(?:\\d{1,2}:)?\\d{1,2}:\\d{2}'
 
 /** Timestamp al inicio del texto de una pista, con paréntesis/guion opcionales. */
 export const LEADING_TS = new RegExp(
-	`^[([]?(${TS_PATTERN})[)\\]]?\\s*[-–—.]?\\s*`,
+	`^[([]?(${TS_PATTERN})[)\\]]?\\s*[${DASH_CHARS}.]?\\s*`,
 )
 
 /** Línea que abre con un rango de timestamps "ts - ts" (p. ej. "0:00 - 5:36 …"). */
 export const RANGE_TS = new RegExp(
-	`^[([]?${TS_PATTERN}[)\\]]?\\s*[-–—]\\s*[([]?${TS_PATTERN}[)\\]]?`,
+	`^[([]?${TS_PATTERN}[)\\]]?\\s*${DASH_CLASS}\\s*[([]?${TS_PATTERN}[)\\]]?`,
 )
 
 /** Primer timestamp en cualquier parte de la línea. */
@@ -298,8 +330,99 @@ export const ANY_TS = new RegExp(`(${TS_PATTERN})`)
 
 /** Timestamp al inicio de una pista numerada, delimitado. */
 export const NUM_LEAD_TS = new RegExp(
-	`^\\s*[([]?(${TS_PATTERN})[)\\]]?(?=\\s|[-–—]|$)`,
+	`^\\s*[([]?(${TS_PATTERN})[)\\]]?(?=\\s|${DASH_CLASS}|$)`,
 )
 
 /** Timestamp al final de una pista numerada. */
 export const NUM_TAIL_TS = new RegExp(`\\s*[([]?(${TS_PATTERN})[)\\]]?\\s*$`)
+
+// ---------------------------------------------------------------------------
+// DOM de YouTube (compartido con debug-dom.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Selectores del scraper. Viven acá —y no en `extractor.ts`— porque
+ * `debug-dom.ts` existe justamente para diagnosticar cuándo YouTube cambia su
+ * markup: si cada archivo tuviera su propia copia, el script de debug podría
+ * quedar mirando selectores viejos y reportar un DOM que el scraper real ya no
+ * usa.
+ *
+ * Como se usan dentro de `page.evaluate` (contexto del browser, sin acceso a
+ * los imports de Node), hay que pasarlos explícitamente como argumento.
+ */
+export const YT_SELECTORS = {
+	/** Variante Polymer vieja: contenedor estricto del contenido real. */
+	listRenderer: 'ytd-playlist-video-list-renderer',
+	/** Secciones de la página; la primera es la playlist, las demás recomendados. */
+	sections: 'yt-item-section-renderer, ytd-item-section-renderer',
+	/**
+	 * Las mismas secciones en orden de preferencia. La variante nueva gana sobre
+	 * la vieja aunque aparezca después en el documento, que es lo que hace un
+	 * `querySelector(a) || querySelector(b)` y no un selector con coma.
+	 */
+	sectionsByPreference: [
+		'yt-item-section-renderer',
+		'ytd-item-section-renderer',
+	],
+	/** Un ítem de playlist, en cualquiera de las dos variantes de UI. */
+	items: 'yt-lockup-view-model, ytd-playlist-video-renderer',
+	/** Link al video dentro de un ítem (trae título y videoId). */
+	itemTitleLink: 'h3 a',
+	header: 'yt-page-header-renderer, ytd-playlist-header-renderer',
+	title:
+		'yt-dynamic-sizing-formatted-string, #title yt-formatted-string, h1 .ytPageHeaderViewModelTitle',
+	metadataRow: '.ytContentMetadataViewModelMetadataRow',
+	durationBadge: 'yt-thumbnail-badge-view-model',
+	description: '#description-inline-expander, #description',
+} as const
+
+/** Scopes en orden de preferencia (el estricto primero). */
+export const YT_SCOPE_SELECTORS = [
+	YT_SELECTORS.listRenderer,
+	'yt-item-section-renderer',
+	'ytd-item-section-renderer',
+]
+
+/**
+ * Detecta un `href` de canal. Se guarda como *string* y no como RegExp porque
+ * tiene que cruzar a `page.evaluate`, que serializa sus argumentos a JSON.
+ */
+export const CHANNEL_HREF_SOURCE = '/(@|channel/|c/|user/)'
+
+export const CHANNEL_HREF_RE = new RegExp(CHANNEL_HREF_SOURCE)
+
+/** UA de Chrome desktop: YouTube sirve markup distinto a un headless sin UA. */
+export const DESKTOP_USER_AGENT =
+	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+
+/**
+ * Títulos de playlist tan genéricos que solos no identifican la carpeta de
+ * salida: en esos casos alcanza con el nombre del canal.
+ */
+export const GENERIC_PLAYLIST_TITLES =
+	/^(videos|playlist|mix|favoritos|favorites)$/i
+
+// ---------------------------------------------------------------------------
+// Tiempos del scraper
+// ---------------------------------------------------------------------------
+
+/** Timeout de navegación a la página de la playlist. */
+export const PLAYLIST_NAV_TIMEOUT_MS = 60_000
+/** Timeout de navegación a la página de un video (tracklist). */
+export const VIDEO_NAV_TIMEOUT_MS = 45_000
+/** Espera máxima a que aparezca el primer ítem de la playlist. */
+export const CONTENT_TIMEOUT_MS = 30_000
+/** Espera a que hidrate la descripción del video antes de leerla. */
+export const DESCRIPTION_SETTLE_MS = 1_200
+/** Timeout del click al botón de consentimiento de cookies. */
+export const CONSENT_CLICK_TIMEOUT_MS = 5_000
+/** Espera tras aceptar el consentimiento, mientras YouTube recarga la vista. */
+export const CONSENT_SETTLE_MS = 1_000
+/** Iteraciones máximas del scroll de carga perezosa (corta un scroll infinito). */
+export const SCROLL_MAX_ITERATIONS = 400
+/** Rondas seguidas sin ítems nuevos para dar por terminado el scroll. */
+export const SCROLL_STABLE_ROUNDS = 3
+/** Pausa entre scrolls para que YouTube alcance a renderizar el lote nuevo. */
+export const SCROLL_SLEEP_MS = 700
+/** Pausa entre videos al pedir tracklists: ser educado con el servidor. */
+export const POLITE_SLEEP_MS = 600

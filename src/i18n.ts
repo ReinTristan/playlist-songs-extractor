@@ -17,7 +17,7 @@ import path from 'node:path'
 import i18next from 'i18next'
 import Backend from 'i18next-fs-backend'
 import { setSavedLocale } from './config.ts'
-import type { Format, Song, SongOrder } from './types.ts'
+import type { Format, Song, SongOrder, VideoType } from './types.ts'
 
 // ---------------------------------------------------------------------------
 // Catálogo de idiomas (locales/meta.json)
@@ -173,4 +173,13 @@ export function formatLabel(value: Format): string {
 
 export function songOrderLabel(value: SongOrder): string {
 	return t(`songOrders.${value}`)
+}
+
+/**
+ * Label del tipo de video. Sólo para la UI del filtro: el valor que va al
+ * export sigue siendo la key canónica ('single', 'album', 'mix', 'unknown'),
+ * para que dos corridas en idiomas distintos sigan siendo comparables.
+ */
+export function videoTypeLabel(value: VideoType): string {
+	return t(`videoTypes.${value}`)
 }

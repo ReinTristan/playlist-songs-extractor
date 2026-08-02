@@ -14,6 +14,12 @@
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import { type Browser, chromium } from 'playwright'
+import {
+	getRecentUrls,
+	getSavedConfig,
+	pushRecentUrl,
+	setSavedConfig,
+} from './config.ts'
 import { runExtraction } from './extractor.ts'
 import {
 	changeLocale,
@@ -24,13 +30,16 @@ import {
 	loadMeta,
 	songOrderLabel,
 	t,
+	videoTypeLabel,
 } from './i18n.ts'
 import {
 	COLUMNS,
 	type ExtractConfig,
 	FORMATS,
+	LONG_VIDEO_SECONDS,
 	SONG_ORDERS,
 	type Song,
+	VIDEO_TYPES,
 } from './types.ts'
 import { normalizeUrl, parsePositiveInt } from './utils.ts'
 
@@ -38,17 +47,32 @@ import { normalizeUrl, parsePositiveInt } from './utils.ts'
 // Configuración
 // ---------------------------------------------------------------------------
 
-/** Config por defecto: todos los formatos, todas las columnas, sin límite. */
+/**
+ * Config por defecto: todos los formatos, todas las columnas, sin límite,
+ * con lo que haya quedado guardado de la última corrida encima.
+ *
+ * Es el único punto donde se lee la config persistida: el modo rápido de
+ * `index.ts` parte de acá, así que hereda la preferencia sin código extra.
+ */
 function defaultConfig(): ExtractConfig {
+	// `formats` sale aparte del resto: se persiste como array (un Set no
+	// sobrevive al JSON del store), así que si viajara dentro del spread dejaría
+	// un Format[] donde va un Set.
+	const { formats, ...saved } = getSavedConfig()
 	return {
 		fullUrl: '',
 		allVideos: true,
 		maxVideos: 50, // valor inicial del input cuando se elige "definir un número"
-		formats: new Set([...FORMATS]),
 		expandAlbums: true,
 		columns: COLUMNS.map((c) => c.key),
 		songOrder: 'original',
 		excludeUnavailable: false,
+		longVideoSeconds: LONG_VIDEO_SECONDS,
+		dedupe: false,
+		videoTypeFilter: null,
+		genreFilter: null,
+		...saved,
+		formats: new Set(formats ?? FORMATS),
 	}
 }
 
@@ -61,6 +85,23 @@ const maxLabel = (config: ExtractConfig): string =>
 // ---------------------------------------------------------------------------
 
 async function editUrl(config: ExtractConfig): Promise<void> {
+	// Con historial se ofrece elegir primero: reescribir a mano una URL de
+	// playlist es justo lo más tedioso del menú.
+	const recent = getRecentUrls()
+	if (recent.length > 0) {
+		const picked = await p.select({
+			message: t('prompts.urlPick'),
+			options: [
+				...recent.map((u) => ({ value: u, label: u })),
+				{ value: '__new', label: t('prompts.urlNew') },
+			],
+		})
+		if (p.isCancel(picked)) return
+		if (picked !== '__new') {
+			config.fullUrl = normalizeUrl(picked)
+			return
+		}
+	}
 	const raw = await p.text({
 		message: t('prompts.url'),
 		placeholder: t('prompts.urlPlaceholder'),
@@ -192,6 +233,61 @@ async function editExcludeUnavailable(config: ExtractConfig): Promise<void> {
 	if (!p.isCancel(v)) config.excludeUnavailable = v
 }
 
+async function editDedupe(config: ExtractConfig): Promise<void> {
+	const v = await p.confirm({
+		message: t('prompts.dedupe'),
+		initialValue: config.dedupe,
+	})
+	if (!p.isCancel(v)) config.dedupe = v
+}
+
+/**
+ * Umbral de "video largo". Se pide en minutos (que es como se piensa) y se
+ * guarda en segundos, que es lo que compara `classifyVideoType`.
+ */
+async function editLongVideoMinutes(config: ExtractConfig): Promise<void> {
+	const raw = await p.text({
+		message: t('prompts.longVideoMinutes'),
+		initialValue: String(Math.round(config.longVideoSeconds / 60)),
+		validate: (v) =>
+			parsePositiveInt(v) === null ? t('prompts.maxInvalid') : undefined,
+	})
+	if (p.isCancel(raw)) return
+	const minutes = parsePositiveInt(raw)
+	if (minutes !== null) config.longVideoSeconds = minutes * 60
+}
+
+/** Filtro por tipo de video. Elegir todos equivale a no filtrar (`null`). */
+async function editVideoTypeFilter(config: ExtractConfig): Promise<void> {
+	const sel = await p.multiselect({
+		message: t('prompts.videoTypeFilter'),
+		options: VIDEO_TYPES.map((v) => ({ value: v, label: videoTypeLabel(v) })),
+		initialValues: config.videoTypeFilter ?? [...VIDEO_TYPES],
+		required: true,
+	})
+	if (p.isCancel(sel)) return
+	config.videoTypeFilter = sel.length === VIDEO_TYPES.length ? null : sel
+}
+
+/**
+ * Filtro por género: texto libre separado por comas, no una lista cerrada.
+ * `GENRE_KEYWORDS` es la whitelist de *detección*, pero acá lo que importa es
+ * lo que quedó en los datos, y vaciar el campo significa "sin filtro".
+ */
+async function editGenreFilter(config: ExtractConfig): Promise<void> {
+	const raw = await p.text({
+		message: t('prompts.genreFilter'),
+		placeholder: t('prompts.genreFilterPlaceholder'),
+		initialValue: config.genreFilter?.join(', ') ?? '',
+	})
+	if (p.isCancel(raw)) return
+	const genres = raw
+		.split(',')
+		.map((g) => g.trim())
+		.filter(Boolean)
+	config.genreFilter = genres.length > 0 ? genres : null
+}
+
 // ---------------------------------------------------------------------------
 // Idioma
 // ---------------------------------------------------------------------------
@@ -242,8 +338,24 @@ function extraSummary(config: ExtractConfig): string {
 		parts.push(songOrderLabel(config.songOrder))
 	}
 	if (config.excludeUnavailable) parts.push(t('hints.excludeUnavailable'))
+	if (config.dedupe) parts.push(t('hints.dedupe'))
+	if (config.longVideoSeconds !== LONG_VIDEO_SECONDS) {
+		parts.push(
+			t('hints.longVideoMinutes', {
+				minutes: Math.round(config.longVideoSeconds / 60),
+			}),
+		)
+	}
+	if (config.videoTypeFilter) {
+		parts.push(config.videoTypeFilter.map(videoTypeLabel).join('/'))
+	}
+	if (config.genreFilter) parts.push(config.genreFilter.join('/'))
 	return parts.length > 0 ? parts.join(', ') : t('hints.none')
 }
+
+/** Hint de un filtro: lo elegido, o "sin filtro" cuando es `null`. */
+const filterHint = (values: string[] | null): string =>
+	values ? values.join(', ') : t('hints.noFilter')
 
 async function extraMenu(config: ExtractConfig): Promise<void> {
 	while (true) {
@@ -260,6 +372,28 @@ async function extraMenu(config: ExtractConfig): Promise<void> {
 					label: t('prompts.extraExclude'),
 					hint: config.excludeUnavailable ? t('hints.yes') : t('hints.no'),
 				},
+				{
+					value: 'dedupe',
+					label: t('prompts.extraDedupe'),
+					hint: config.dedupe ? t('hints.yes') : t('hints.no'),
+				},
+				{
+					value: 'longVideo',
+					label: t('prompts.extraLongVideo'),
+					hint: t('hints.longVideoMinutes', {
+						minutes: Math.round(config.longVideoSeconds / 60),
+					}),
+				},
+				{
+					value: 'videoTypeFilter',
+					label: t('prompts.extraVideoTypeFilter'),
+					hint: filterHint(config.videoTypeFilter?.map(videoTypeLabel) ?? null),
+				},
+				{
+					value: 'genreFilter',
+					label: t('prompts.extraGenreFilter'),
+					hint: filterHint(config.genreFilter),
+				},
 				{ value: 'back', label: t('prompts.back') },
 			],
 		})
@@ -271,6 +405,18 @@ async function extraMenu(config: ExtractConfig): Promise<void> {
 				break
 			case 'excludeUnavailable':
 				await editExcludeUnavailable(config)
+				break
+			case 'dedupe':
+				await editDedupe(config)
+				break
+			case 'longVideo':
+				await editLongVideoMinutes(config)
+				break
+			case 'videoTypeFilter':
+				await editVideoTypeFilter(config)
+				break
+			case 'genreFilter':
+				await editGenreFilter(config)
 				break
 		}
 	}
@@ -377,6 +523,10 @@ async function interactiveMenu(): Promise<void> {
 					try {
 						browser ??= await chromium.launch({ headless: true })
 						await runExtraction(config, browser)
+						// Sólo tras una corrida exitosa: no tiene sentido recordar
+						// una URL que resultó no existir. (La config se guarda al
+						// salir del menú, en el `finally` de abajo.)
+						pushRecentUrl(config.fullUrl)
 					} catch (err) {
 						p.log.error(
 							t('extract.failed', { message: (err as Error).message }),
@@ -390,6 +540,12 @@ async function interactiveMenu(): Promise<void> {
 			}
 		}
 	} finally {
+		// La config se persiste al salir del menú, no sólo tras extraer: ajustar
+		// columnas o formatos y cerrar también es una preferencia, y esperar a
+		// una extracción exitosa hacía que se perdiera en cuanto alguien
+		// configuraba y salía. `finally` cubre todas las salidas (quit, cancelar
+		// con Ctrl+C en un prompt, o una excepción).
+		setSavedConfig(config)
 		if (browser) await browser.close()
 	}
 }

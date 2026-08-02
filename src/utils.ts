@@ -36,9 +36,48 @@ export function parsePositiveInt(
 }
 
 /**
- * Separa `--lang=<code>` / `--lang <code>` (o `--locale`) del resto del argv,
- * en cualquier posición, para que los argumentos posicionales (URL, límite)
- * sigan leyéndose por índice.
+ * Separa los `--flags` del resto del argv, en cualquier posición, para que los
+ * argumentos posicionales (URL, límite) sigan leyéndose por índice.
+ *
+ * Acepta `--flag=valor` y `--flag valor`; esta última forma sólo para los
+ * nombres listados en `valueFlags`, porque si no un flag booleano se comería
+ * el posicional siguiente (`--dedupe "URL"` tomaría la URL como su valor).
+ * Los flags sin valor quedan como `true`.
+ */
+export function parseFlags(
+	argv: string[],
+	valueFlags: string[] = [],
+): { flags: Map<string, string | true>; rest: string[] } {
+	const flags = new Map<string, string | true>()
+	const rest: string[] = []
+	for (let i = 0; i < argv.length; i++) {
+		const arg = argv[i]
+		const inline = arg.match(/^--([^=]+)=(.*)$/)
+		if (inline) {
+			flags.set(inline[1], inline[2])
+			continue
+		}
+		const bare = arg.match(/^--(.+)$/)
+		if (bare) {
+			const name = bare[1]
+			if (valueFlags.includes(name) && i + 1 < argv.length) {
+				flags.set(name, argv[i + 1])
+				i++ // consumir el valor
+			} else {
+				flags.set(name, true)
+			}
+			continue
+		}
+		rest.push(arg)
+	}
+	return { flags, rest }
+}
+
+/**
+ * Atajo histórico sobre `parseFlags` para el idioma: `--lang=<code>` /
+ * `--lang <code>` (o `--locale`). Se resuelve aparte del resto de los flags
+ * porque hay que conocer el idioma antes de imprimir cualquier mensaje,
+ * incluidos los errores de las otras opciones.
  */
 export function parseLangFlag(argv: string[]): {
 	lang?: string
