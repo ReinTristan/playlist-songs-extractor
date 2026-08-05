@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, it } from 'node:test'
 import {
+	escapeRegex,
 	normalizeUrl,
 	parseFlags,
 	parseLangFlag,
@@ -183,5 +184,58 @@ describe('normalizeUrl)', () => {
 	})
 	it('vacío devuelve vacío', () => {
 		assert.equal(normalizeUrl('  '), '')
+	})
+})
+
+describe('escapeRegex', () => {
+	it('escapa todos los metacaracteres de regex', () => {
+		const metacharacters = [
+			'.',
+			'*',
+			'+',
+			'?',
+			'^',
+			'$',
+			'{',
+			'}',
+			'(',
+			')',
+			'|',
+			'[',
+			']',
+			'\\',
+		]
+		for (const ch of metacharacters)
+			assert.equal(escapeRegex(ch), `\\${ch}`, `no escapó "${ch}"`)
+	})
+
+	it('deja intacta una cadena sin metacaracteres', () => {
+		assert.equal(escapeRegex('deep house'), 'deep house')
+	})
+
+	it('vacío devuelve vacío', () => {
+		assert.equal(escapeRegex(''), '')
+	})
+
+	// El caso real de uso: los géneros de GENRE_KEYWORDS se interpolan dentro de
+	// `\b...\b` para detectarlos en un título. Sin escapar, "d&b" o "lo-fi" no
+	// rompen, pero un futuro género con paréntesis o "+" sí haría explotar la
+	// construcción de la RegExp.
+	it('interpolado en una RegExp matchea el literal', () => {
+		for (const literal of [
+			'd&b',
+			'drum & bass',
+			'lo-fi',
+			'r&b',
+			'c++ (live)',
+		]) {
+			const re = new RegExp(escapeRegex(literal), 'i')
+			assert.ok(re.test(literal), `no matcheó "${literal}"`)
+		}
+	})
+
+	it('el resultado no matchea lo que el metacaracter habría matcheado sin escapar', () => {
+		assert.ok(!new RegExp(escapeRegex('a.c')).test('abc'))
+		assert.ok(new RegExp(escapeRegex('a.c')).test('a.c'))
 	})
 })

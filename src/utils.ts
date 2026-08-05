@@ -120,6 +120,16 @@ export function sanitizeFilename(name: string): string {
 	)
 }
 
+/**
+ * Escapa los metacaracteres de una cadena para poder interpolarla dentro de una
+ * RegExp como texto literal. Lo usa el parseo de títulos, que construye sus
+ * patrones a partir de listas de keywords (géneros, tipos de mezcla) donde
+ * cualquier entrada puede traer `&`, `+`, `.` o paréntesis.
+ */
+export function escapeRegex(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /** Devuelve una copia barajada del array (Fisher–Yates), sin mutar el original. */
 export function shuffle<T>(arr: T[]): T[] {
 	const out = [...arr]

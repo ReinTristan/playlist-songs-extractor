@@ -59,7 +59,13 @@ import {
 	YT_SCOPE_SELECTORS,
 	YT_SELECTORS,
 } from './types.ts'
-import { durationToSeconds, sanitizeFilename, shuffle, sleep } from './utils.ts'
+import {
+	durationToSeconds,
+	escapeRegex,
+	sanitizeFilename,
+	shuffle,
+	sleep,
+} from './utils.ts'
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -99,11 +105,77 @@ const NUMBERED_LINE_RE = new RegExp(`^(\\d{1,3})\\s*[.)${DASH_CHARS}]\\s+(.+)$`)
 /** Guion que sobra entre el timestamp inicial y el título de la pista. */
 const LEADING_DASH_RE = new RegExp(`^\\s*${DASH_CLASS}\\s*`)
 
+/**
+ * Géneros de la whitelist ya compilados a RegExp. `parseTitle` los prueba en
+ * bucle contra cada corchete y cada segmento de cada título, así que
+ * construirlos por llamada era compilar ~60 regex por canción. El Map además
+ * sirve de índice para preguntar si un texto *es* exactamente un género.
+ */
+const GENRE_MATCHERS = new Map<string, RegExp>(
+	GENRE_KEYWORDS.map((g) => [g, new RegExp(`\\b${escapeRegex(g)}\\b`, 'i')]),
+)
+
+/** Contenido de un paréntesis/corchete, sin anidar (pasos 3 y 4 de parseTitle). */
+const BRACKET_CONTENT_RE = /[([]([^()[\]]+)[)\]]/g
+
+/** Alternancia de MIX_TYPE_KEYWORDS, base de las tres regex que siguen. */
+const MIX_TYPE_ALT = MIX_TYPE_KEYWORDS.map((k) => escapeRegex(k)).join('|')
+/** Descriptor de mezcla dentro de un paréntesis/corchete: "(Nero Remix)". */
+const BRACKET_MIX_RE = new RegExp(
+	`[\\(\\[]([^()\\[\\]]*\\b(?:${MIX_TYPE_ALT})\\b[^()\\[\\]]*)[\\)\\]]`,
+	'i',
+)
+/** Descriptor de mezcla en el último segmento tras un guion: "- Extended Mix". */
+const TAIL_MIX_RE = new RegExp(
+	`\\s*${DASH_CLASS}\\s*([^${DASH_CHARS}]*\\b(?:${MIX_TYPE_ALT})\\b[^${DASH_CHARS}]*)$`,
+	'i',
+)
+/** Keyword de mezcla suelta, sin delimitador alguno. */
+const BARE_MIX_RE = new RegExp(`\\b(${MIX_TYPE_ALT})\\b`, 'i')
+
 function splitArtists(raw: string): string[] {
 	return raw
 		.split(/\s*[,&+×*]\s*|\s+(?:x|vs\.?|w\/|with|and)\s+/gi)
 		.map((a) => a.trim())
 		.filter(Boolean)
+}
+
+/**
+ * Acumula en `into` los géneros de la whitelist presentes en `text`, sin
+ * repetir. Lo comparten el paso 3 de `parseTitle` (contenido de los corchetes)
+ * y el 4b (segmentos separados por pipe), que hacían exactamente lo mismo
+ * contra fuentes de texto distintas.
+ */
+function collectGenres(text: string, into: string[]): void {
+	for (const [genre, re] of GENRE_MATCHERS) {
+		if (re.test(text) && !into.some((x) => x.toLowerCase() === genre))
+			into.push(genre)
+	}
+}
+
+/** Parte un título por "|" en segmentos limpios; `[]` si no hay ningún pipe. */
+function splitPipeSegments(working: string): string[] {
+	if (!working.includes('|')) return []
+	return working
+		.split('|')
+		.map((s) => s.trim())
+		.filter(Boolean)
+}
+
+/**
+ * Decide con qué segmento se queda el título tras separarlo por pipes.
+ *
+ * Si alguno trae un guion es el formato NCS ("Artista - Canción | Género |
+ * Label"): ese segmento es el contenido y los demás son metadata que el paso
+ * 4b ya leyó. Si ninguno lo trae, el pipe *es* el separador artista/canción,
+ * así que se descartan los segmentos que son puro género (ya capturados) y se
+ * devuelven los demás con el pipe intacto para que el paso 5 los separe.
+ */
+function pickPipeMainSegment(segments: string[]): string {
+	const dashSeg = segments.find((s) => SPACED_DASH_RE.test(s))
+	if (dashSeg) return dashSeg
+	const content = segments.filter((s) => !GENRE_MATCHERS.has(s.toLowerCase()))
+	return (content.length ? content : segments).join(' | ')
 }
 
 /**
@@ -162,15 +234,8 @@ function parseTitle(raw: string): ParsedTitle {
 	//    El texto que lo contiene se anota en `mixTypeText` pero NO se borra
 	//    todavía: el paso 3 necesita ver ese paréntesis para pescar géneros que
 	//    vengan adentro ("(Deep House Remix)"). Se borra en el paso 4.
-	const mixTypeAlt = MIX_TYPE_KEYWORDS.map((k) =>
-		k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-	).join('|')
 	let mixTypeText = ''
-	const bracketMix = new RegExp(
-		`[\\(\\[]([^()\\[\\]]*\\b(?:${mixTypeAlt})\\b[^()\\[\\]]*)[\\)\\]]`,
-		'i',
-	)
-	const bracketMatch = working.match(bracketMix)
+	const bracketMatch = working.match(BRACKET_MIX_RE)
 	if (bracketMatch) {
 		mixType = bracketMatch[1].trim()
 		mixTypeText = bracketMatch[0]
@@ -180,36 +245,20 @@ function parseTitle(raw: string): ParsedTitle {
 		// si antes queda otro guion: con uno solo, ese último segmento *es* el
 		// título de la canción ("Artist - Cover Me In Sunshine") y borrarlo se
 		// llevaría puesta la canción entera.
-		const tailMix = new RegExp(
-			`\\s*${DASH_CLASS}\\s*([^${DASH_CHARS}]*\\b(?:${mixTypeAlt})\\b[^${DASH_CHARS}]*)$`,
-			'i',
-		)
-		const tail = working.match(tailMix)
+		const tail = working.match(TAIL_MIX_RE)
 		const head = tail ? working.slice(0, tail.index) : ''
 		if (tail && SPACED_DASH_RE.test(head)) {
 			mixType = tail[1].trim()
 			mixTypeText = tail[0]
 		} else {
-			const bareMix = new RegExp(`\\b(${mixTypeAlt})\\b`, 'i')
-			const bare = working.match(bareMix)
+			const bare = working.match(BARE_MIX_RE)
 			if (bare) mixType = bare[1].trim()
 		}
 	}
 
 	// 3) genres: buscar géneros de la lista blanca dentro de corchetes/paréntesis.
-	const bracketContents = working.match(/[([]([^()[\]]+)[)\]]/g) || []
-	for (const chunk of bracketContents) {
-		const inner = chunk.slice(1, -1).toLowerCase()
-		for (const genre of GENRE_KEYWORDS) {
-			const g = new RegExp(
-				`\\b${genre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
-				'i',
-			)
-			if (g.test(inner) && !genres.some((x) => x.toLowerCase() === genre)) {
-				genres.push(genre)
-			}
-		}
-	}
+	for (const chunk of working.match(BRACKET_CONTENT_RE) || [])
+		collectGenres(chunk.slice(1, -1), genres)
 
 	// 4) Quitar ruido.
 	for (const pattern of NOISE_PATTERNS) working = working.replace(pattern, ' ')
@@ -219,46 +268,18 @@ function parseTitle(raw: string): ParsedTitle {
 	if (mixTypeText) working = working.replace(mixTypeText, ' ')
 
 	// Quitar corchetes/paréntesis que sólo contienen géneros (ya capturados).
-	working = working.replace(/[([]([^()[\]]+)[)\]]/g, (m, inner: string) => {
-		const low = inner.trim().toLowerCase()
-		return GENRE_KEYWORDS.some((g) => low === g) ? ' ' : m
-	})
+	working = working.replace(BRACKET_CONTENT_RE, (m, inner: string) =>
+		GENRE_MATCHERS.has(inner.trim().toLowerCase()) ? ' ' : m,
+	)
 
 	working = working.replace(/\s+/g, ' ').trim()
 
 	// 4b) Segmentos separados por "|" (formato común: "Artista - Canción | Género | Label").
-	//     Se conserva el segmento con el guion como principal; los demás se revisan por género.
-	if (working.includes('|')) {
-		const segments = working
-			.split('|')
-			.map((s) => s.trim())
-			.filter(Boolean)
-		for (const seg of segments) {
-			const low = seg.toLowerCase()
-			for (const genre of GENRE_KEYWORDS) {
-				const g = new RegExp(
-					`\\b${genre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
-					'i',
-				)
-				if (g.test(low) && !genres.some((x) => x.toLowerCase() === genre))
-					genres.push(genre)
-			}
-		}
-		const dashSeg = segments.find((s) => SPACED_DASH_RE.test(s))
-		if (dashSeg) {
-			// Formato NCS: hay un guion → quedarse solo con ese segmento (artista-
-			// canción); los demás son metadata (género/label) ya procesada.
-			working = dashSeg
-		} else {
-			// Sin guion en ningún segmento: el pipe actúa como separador
-			// artista/canción. Se descartan los segmentos que son puro género (ya
-			// capturado) y se deja el resto con el pipe intacto para que el paso 5
-			// lo separe.
-			const isPureGenre = (s: string) =>
-				GENRE_KEYWORDS.some((g) => s.toLowerCase() === g)
-			const content = segments.filter((s) => !isPureGenre(s))
-			working = (content.length ? content : segments).join(' | ')
-		}
+	//     Todos aportan géneros; sólo uno sobrevive como contenido.
+	const segments = splitPipeSegments(working)
+	if (segments.length > 0) {
+		for (const seg of segments) collectGenres(seg, genres)
+		working = pickPipeMainSegment(segments)
 	}
 
 	// 5) Artistas + canción: separar por el separador principal.
@@ -281,17 +302,11 @@ function parseTitle(raw: string): ParsedTitle {
 		.trim()
 
 	// Quitar géneros genéricos contenidos en otro más específico (p. ej. "house" si hay "deep house").
-	const refinedGenres = genres.filter(
-		(g) =>
-			!genres.some(
-				(other) =>
-					other !== g &&
-					new RegExp(
-						`\\b${g.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
-						'i',
-					).test(other),
-			),
-	)
+	const refinedGenres = genres.filter((g) => {
+		const re = GENRE_MATCHERS.get(g)
+		if (!re) return true
+		return !genres.some((other) => other !== g && re.test(other))
+	})
 
 	return { artists, featuredArtists, songTitle, mixType, genres: refinedGenres }
 }
