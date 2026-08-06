@@ -13,7 +13,6 @@
 
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
-import { type Browser, chromium } from 'playwright'
 import {
 	getRecentUrls,
 	getSavedConfig,
@@ -32,6 +31,7 @@ import {
 	t,
 	videoTypeLabel,
 } from './i18n.ts'
+import { openScrapeSession, type ScrapeSession } from './sources/scrape.ts'
 import {
 	COLUMNS,
 	type ExtractConfig,
@@ -429,9 +429,10 @@ async function extraMenu(config: ExtractConfig): Promise<void> {
 async function interactiveMenu(): Promise<void> {
 	const config = defaultConfig()
 	config.onProgress = (msg) => p.log.step(msg)
-	// Un solo Chromium por sesión: se lanza lazy en la primera extracción y se
-	// cierra al salir del menú.
-	let browser: Browser | null = null
+	// Una sola sesión de scraping: se abre lazy en la primera extracción y se
+	// cierra al salir del menú, así el navegador se lanza una única vez aunque se
+	// procesen varias playlists seguidas.
+	let session: ScrapeSession | null = null
 	p.intro(pc.bgCyan(pc.black(t('menu.title'))))
 
 	try {
@@ -521,8 +522,8 @@ async function interactiveMenu(): Promise<void> {
 					}
 					p.log.step(pc.cyan(t('extract.starting', { url: config.fullUrl })))
 					try {
-						browser ??= await chromium.launch({ headless: true })
-						await runExtraction(config, browser)
+						session ??= await openScrapeSession()
+						await runExtraction(config, session)
 						// Sólo tras una corrida exitosa: no tiene sentido recordar
 						// una URL que resultó no existir. (La config se guarda al
 						// salir del menú, en el `finally` de abajo.)
@@ -546,7 +547,7 @@ async function interactiveMenu(): Promise<void> {
 		// configuraba y salía. `finally` cubre todas las salidas (quit, cancelar
 		// con Ctrl+C en un prompt, o una excepción).
 		setSavedConfig(config)
-		if (browser) await browser.close()
+		await session?.close()
 	}
 }
 

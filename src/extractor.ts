@@ -1,9 +1,13 @@
 /**
- * Extractor de canciones de playlists de YouTube (core / scraper).
+ * Extractor de canciones de playlists de YouTube (procesamiento / orquestación).
  *
- * Este módulo expone la lógica de extracción (`runExtraction`) y las funciones
- * puras de parseo. El arranque (CLI interactivo y modo argv) vive en `cli.ts`;
- * los tipos y constantes compartidos, en `types.ts`.
+ * Este módulo interpreta los datos crudos que entrega una *fuente* (`sources/`)
+ * y los convierte en filas de canciones: clasificación, parseo de títulos y de
+ * tracklists, filtros, orden y exportación. No sabe hablar con YouTube — de eso
+ * se encarga `sources/scrape.ts` (y, a futuro, la fuente de la API).
+ *
+ * El arranque (CLI interactivo y modo argv) vive en `cli.ts`; los tipos y
+ * constantes compartidos, en `types.ts`.
  *
  * Genera output/<playlist>_<timestamp local>/ con los formatos seleccionados
  * (playlist.json, playlist.csv, playlist.xlsx).
@@ -14,21 +18,15 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import ExcelJS from 'exceljs'
-import { type Browser, chromium, type Page } from 'playwright'
 import { columnHeader, t } from './i18n.ts'
+import { openScrapeSession, type ScrapeSession } from './sources/scrape.ts'
 import {
 	ALBUM_KEYWORDS,
 	ANY_TS,
-	CHANNEL_HREF_SOURCE,
 	COLUMNS,
-	CONSENT_CLICK_TIMEOUT_MS,
-	CONSENT_SETTLE_MS,
-	CONTENT_TIMEOUT_MS,
 	type Column,
 	DASH_CHARS,
 	DASH_CLASS,
-	DESCRIPTION_SETTLE_MS,
-	DESKTOP_USER_AGENT,
 	type ExtractConfig,
 	type Format,
 	GENERIC_PLAYLIST_TITLES,
@@ -41,23 +39,15 @@ import {
 	NUM_LEAD_TS,
 	NUM_TAIL_TS,
 	type ParsedTitle,
-	PLAYLIST_NAV_TIMEOUT_MS,
 	type PlaylistVideo,
 	POLITE_SLEEP_MS,
 	RANGE_TS,
 	type RawPlaylistVideo,
-	SCROLL_MAX_ITERATIONS,
-	SCROLL_SLEEP_MS,
-	SCROLL_STABLE_ROUNDS,
 	type Song,
 	type SongOrder,
 	TRACK_NUMBER_PATTERN,
 	type Track,
-	VIDEO_NAV_TIMEOUT_MS,
 	type VideoType,
-	type YoutubePageHTML,
-	YT_SCOPE_SELECTORS,
-	YT_SELECTORS,
 } from './types.ts'
 import {
 	durationToSeconds,
@@ -383,34 +373,6 @@ function parseTracklist(description: string): Track[] {
 	return []
 }
 
-async function fetchTracklist(page: Page, videoId: string): Promise<Track[]> {
-	const url = `https://www.youtube.com/watch?v=${videoId}`
-	try {
-		await page.goto(url, {
-			waitUntil: 'domcontentloaded',
-			timeout: VIDEO_NAV_TIMEOUT_MS,
-		})
-		await sleep(DESCRIPTION_SETTLE_MS)
-		const description = await page.evaluate((descriptionSelector) => {
-			const w = window as unknown as YoutubePageHTML
-			const fromPlayer =
-				w?.ytInitialPlayerResponse?.videoDetails?.shortDescription
-			if (fromPlayer) return fromPlayer as string
-			const el = document.querySelector(descriptionSelector)
-			return el ? (el as HTMLElement).innerText : ''
-		}, YT_SELECTORS.description)
-		return parseTracklist(description)
-	} catch (err) {
-		console.warn(
-			t('extract.descriptionFailed', {
-				videoId,
-				message: (err as Error).message,
-			}),
-		)
-		return []
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Clasificación de tipo de video
 // ---------------------------------------------------------------------------
@@ -445,247 +407,38 @@ function classifyVideoType(
 }
 
 // ---------------------------------------------------------------------------
-// Scraping de la página de playlist
+// Post-proceso de los videos crudos
 // ---------------------------------------------------------------------------
 
-async function dismissConsent(page: Page): Promise<void> {
-	try {
-		const selectors = [
-			'button[aria-label*="Accept all" i]',
-			'button[aria-label*="Aceptar todo" i]',
-			'button[aria-label*="Accept the use" i]',
-			'tp-yt-paper-button:has-text("Accept all")',
-			'button:has-text("Accept all")',
-			'button:has-text("Aceptar todo")',
-		]
-		for (const sel of selectors) {
-			const btn = page.locator(sel).first()
-			if (
-				(await btn.count()) > 0 &&
-				(await btn.isVisible().catch(() => false))
-			) {
-				await btn.click({ timeout: CONSENT_CLICK_TIMEOUT_MS }).catch(() => {})
-				await sleep(CONSENT_SETTLE_MS)
-				return
-			}
-		}
-	} catch {
-		/* sin diálogo de consentimiento */
-	}
-}
-
-/** `limit === null` = sin límite (todos los videos de la playlist). */
-async function scrapePlaylist(
-	page: Page,
-	url: string,
-	limit: number | null = null,
+/**
+ * Convierte los videos crudos de una fuente en videos de dominio, derivando lo
+ * que se calcula igual venga de donde venga: duración en segundos, tipo de video
+ * y el/los canal(es) resueltos.
+ *
+ * Vive acá y no en `sources/` a propósito: es el paso que hace que el resto del
+ * pipeline no tenga que saber si los datos salieron del DOM o de una API. Es
+ * puro y no muta la entrada.
+ */
+function toPlaylistVideos(
+	raw: RawPlaylistVideo[],
 	longVideoSeconds: number = LONG_VIDEO_SECONDS,
-): Promise<{ title: string; videos: PlaylistVideo[]; channel: string }> {
-	const response = await page.goto(url, {
-		waitUntil: 'domcontentloaded',
-		timeout: PLAYLIST_NAV_TIMEOUT_MS,
-	})
-	// Playwright no tira error ante un 4xx/5xx: sin este chequeo, una playlist
-	// borrada/privada se "scrapea" bien, encuentra 0 videos y escribe una
-	// carpeta de salida vacía como si todo hubiera salido bien.
-	if (!response?.ok()) {
-		throw new Error(
-			t('errors.pageStatus', { status: response?.status() ?? 0, url }),
-		)
-	}
-	await dismissConsent(page)
-
-	// Esperar el contenido ANTES de decidir el scope: `locator.count()` no
-	// auto-espera, y `domcontentloaded` dispara antes de que YouTube hidrate
-	// sus custom elements. Preguntando primero, en una máquina lenta el
-	// list-renderer todavía no existe y se caía al scope permisivo — justo el
-	// que puede arrastrar videos recomendados.
-	await page
-		.waitForSelector(
-			YT_SCOPE_SELECTORS.map((s) => `${s} ${YT_SELECTORS.items}`).join(', '),
-			{ timeout: CONTENT_TIMEOUT_MS },
-		)
-		.catch(() => {})
-
-	// La página de una playlist agrupa su contenido en varios
-	// "item-section-renderer": el primero suele ser la playlist en sí, los
-	// siguientes son secciones de videos/playlists recomendados que YouTube
-	// agrega debajo. Pero en playlists cortas, YouTube puede meter esas
-	// sugerencias como hermanas del contenido real dentro del MISMO section
-	// (variante Polymer vieja) — ahí, el contenido real está anidado en
-	// ytd-playlist-video-list-renderer, que las sugerencias no comparten. Si
-	// ese contenedor existe, se prioriza sobre el heurístico de "primer
-	// section" para no arrastrar esos falsos positivos.
-	const hasListRenderer =
-		(await page.locator(YT_SELECTORS.listRenderer).count()) > 0
-	const scopeSelector = hasListRenderer
-		? YT_SELECTORS.listRenderer
-		: YT_SELECTORS.sections
-	const playlistSection = () => page.locator(scopeSelector).first()
-
-	// Scroll incremental hasta que el número de items se estabilice (lazy load),
-	// o hasta alcanzar el límite solicitado.
-	let stable = 0
-	let lastCount = 0
-	for (
-		let i = 0;
-		i < SCROLL_MAX_ITERATIONS && stable < SCROLL_STABLE_ROUNDS;
-		i++
-	) {
-		const count = await playlistSection().locator(YT_SELECTORS.items).count()
-		if (limit !== null && count >= limit) break
-		if (count === lastCount) stable++
-		else stable = 0
-		lastCount = count
-		await page.evaluate(() =>
-			window.scrollTo(0, document.documentElement.scrollHeight),
-		)
-		await sleep(SCROLL_SLEEP_MS)
-	}
-
-	// Los selectores viajan como argumento: dentro de page.evaluate no existen
-	// los imports de Node, y la regex tiene que cruzar como string porque los
-	// argumentos se serializan a JSON.
-	const domArgs = { sel: YT_SELECTORS, channelHref: CHANNEL_HREF_SOURCE }
-
-	const { title, channel } = await page.evaluate(({ sel, channelHref }) => {
-		const w = window as unknown as YoutubePageHTML
-		const fromData = w?.ytInitialData?.metadata?.playlistMetadataRenderer?.title
-		const h1 = document.querySelector(sel.title)
-		const title =
-			(fromData as string) ||
-			(h1 ? (h1 as HTMLElement).innerText : '') ||
-			document.title.replace(/\s*-\s*YouTube\s*$/, '')
-
-		// Canal: primer enlace a un canal dentro del header de la playlist.
-		const channelHrefRe = new RegExp(channelHref)
-		const header = document.querySelector(sel.header)
-		const ownerAnchor = header
-			? (Array.from(header.querySelectorAll('a')).find((a) =>
-					channelHrefRe.test(
-						(a as HTMLAnchorElement).getAttribute('href') || '',
-					),
-				) as HTMLAnchorElement | undefined)
-			: undefined
-		const channel = (ownerAnchor?.innerText || '').trim()
-
-		return { title, channel }
-	}, domArgs)
-
-	const videos: RawPlaylistVideo[] = await page.evaluate(
-		({ sel, channelHref }) => {
-			// El primer "item-section-renderer" es la playlist real; los que le
-			// siguen son secciones de recomendados que no deben incluirse. Si existe
-			// ytd-playlist-video-list-renderer (variante Polymer vieja), se prioriza
-			// ese scope más estricto porque ahí las sugerencias no se cuelan aunque
-			// compartan section con el contenido real. Si no se encuentra nada
-			// (cambio de markup de YouTube), se cae al documento completo para no
-			// romper la extracción.
-			const channelHrefRe = new RegExp(channelHref)
-			const listRenderer = document.querySelector(sel.listRenderer)
-			const section = sel.sectionsByPreference.reduce<Element | null>(
-				(found, s) => found ?? document.querySelector(s),
-				null,
-			)
-			const root = listRenderer ?? section ?? document
-			const items = Array.from(root.querySelectorAll(sel.items))
-			return items.map((item, i) => {
-				const titleEl = item.querySelector(
-					sel.itemTitleLink,
-				) as HTMLAnchorElement | null
-				const rawTitle = (
-					titleEl?.getAttribute('title') ||
-					titleEl?.innerText ||
-					''
-				).trim()
-				const href = titleEl?.href || ''
-				let videoId = ''
-				try {
-					videoId = new URL(href).searchParams.get('v') || ''
-				} catch {
-					/* href no parseable */
-				}
-				// Canal(es): en videos normales hay un <a> al canal; en videos de
-				// "colaboración" (varios canales dueños) YouTube no pone ningún
-				// anchor y en cambio escribe los nombres como texto plano (p. ej.
-				// "Alan Walker and Au/Ra") en la primera fila de metadata. Se
-				// capturan ambas señales crudas acá; resolveChannelNames (función
-				// pura de Node) decide cuál usar y cómo separarlas.
-				const chanAnchorTexts = Array.from(item.querySelectorAll('a'))
-					.filter((a) =>
-						channelHrefRe.test(
-							(a as HTMLAnchorElement).getAttribute('href') || '',
-						),
-					)
-					.map((a) => (a as HTMLAnchorElement).innerText.trim())
-					.filter(Boolean)
-				const metaRowText = (
-					item.querySelector(sel.metadataRow)?.textContent || ''
-				).trim()
-				const badges = Array.from(item.querySelectorAll(sel.durationBadge)).map(
-					(b) => (b as HTMLElement).innerText.trim(),
-				)
-				const duration = badges.find((b) => /^\d{1,2}(:\d{2})+$/.test(b)) || ''
-				const img = item.querySelector('img') as HTMLImageElement | null
-				const thumbnail = videoId
-					? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
-					: img?.src || img?.getAttribute('data-thumb') || ''
-				const lowTitle = rawTitle.toLowerCase()
-				const unavailable =
-					!videoId ||
-					/\[private video\]|\[deleted video\]|video no disponible|\[unavailable\]/.test(
-						lowTitle,
-					) ||
-					rawTitle === ''
-				return {
-					index: i + 1,
-					rawTitle,
-					chanAnchorTexts,
-					metaRowText,
-					videoId,
-					url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : href,
-					thumbnail,
-					duration,
-					durationSeconds: 0,
-					availability: unavailable ? 'unavailable' : 'available',
-					videoType: 'single',
-					isCandidate: false,
-				} as RawPlaylistVideo
-			})
-		},
-		domArgs,
-	)
-
-	const limited = limit !== null ? videos.slice(0, limit) : videos
-
-	// Completar campos derivados (fuera del browser), incluyendo la
-	// resolución final de channel (requiere resolveChannelNames, que no
-	// existe dentro del contexto del browser en page.evaluate).
-	const finalVideos: PlaylistVideo[] = limited.map((v) => {
-		v.durationSeconds = durationToSeconds(v.duration)
-		if (v.availability === 'available') {
-			const { videoType, isCandidate } = classifyVideoType(
-				v.rawTitle,
-				v.durationSeconds,
-				longVideoSeconds,
-			)
-			v.videoType = videoType
-			v.isCandidate = isCandidate
-		} else {
-			v.videoType = 'unknown'
-		}
-		const { chanAnchorTexts, metaRowText, ...rest } = v
+): PlaylistVideo[] {
+	return raw.map(({ chanAnchorTexts, metaRowText, ...rest }) => {
+		const durationSeconds = durationToSeconds(rest.duration)
+		// Un video no disponible no se clasifica: aplicar las heurísticas sobre un
+		// "[Private video]" sólo produciría etiquetas inventadas.
+		const { videoType, isCandidate } =
+			rest.availability === 'available'
+				? classifyVideoType(rest.rawTitle, durationSeconds, longVideoSeconds)
+				: { videoType: 'unknown' as const, isCandidate: false }
 		return {
 			...rest,
 			channel: resolveChannelNames(chanAnchorTexts, metaRowText),
+			durationSeconds,
+			videoType,
+			isCandidate,
 		}
 	})
-
-	return {
-		title: title || 'playlist',
-		videos: finalVideos,
-		channel: channel || 'Channel',
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -952,16 +705,16 @@ async function writeOutputs({
 // ---------------------------------------------------------------------------
 
 /**
- * Ejecuta una extracción completa según `config`: abre el navegador, lee la
- * playlist, (opcionalmente) expande álbumes/mixes y escribe los archivos.
- * Devuelve el número de canciones y la carpeta de salida.
+ * Ejecuta una extracción completa según `config`: pide la playlist a la fuente,
+ * (opcionalmente) expande álbumes/mixes y escribe los archivos. Devuelve el
+ * número de canciones y la carpeta de salida.
  *
- * Si se pasa `sharedBrowser` se reutiliza (y no se cierra aquí); si no, se
- * lanza un Chromium propio que se cierra al terminar.
+ * Si se pasa `session` se reutiliza (y no se cierra aquí); si no, se abre una
+ * propia que se cierra al terminar.
  */
 export async function runExtraction(
 	config: ExtractConfig,
-	sharedBrowser?: Browser,
+	session?: ScrapeSession,
 ): Promise<{ count: number; outDir: string }> {
 	const {
 		fullUrl,
@@ -989,91 +742,96 @@ export async function runExtraction(
 		)
 	const log = config.onProgress ?? console.log
 
-	let ownBrowser: Browser | null = null
+	// La validación de arriba corre ANTES de abrir nada: una config inválida no
+	// tiene por qué costar el arranque de un Chromium.
+	let ownSession: ScrapeSession | null = null
 	try {
-		let browser: Browser
-		if (sharedBrowser) {
-			browser = sharedBrowser
+		let source: ScrapeSession
+		if (session) {
+			source = session
 		} else {
 			log(t('extract.openingBrowser'))
-			ownBrowser = await chromium.launch({ headless: true })
-			browser = ownBrowser
+			ownSession = await openScrapeSession()
+			source = ownSession
 		}
-		const context = await browser.newContext({
-			locale: 'en-US',
-			userAgent: DESKTOP_USER_AGENT,
-		})
-		try {
-			const page = await context.newPage()
 
-			log(t('extract.reading'))
-			const { title, videos, channel } = await scrapePlaylist(
-				page,
-				fullUrl,
-				allVideos ? null : maxVideos,
-				longVideoSeconds,
-			)
-			log(t('extract.found', { count: videos.length, title }))
-			// Sin videos no hay nada que exportar: escribir igual dejaba carpetas
-			// con `total: 0` que parecían una corrida exitosa.
-			if (videos.length === 0) throw new Error(t('errors.emptyPlaylist'))
+		log(t('extract.reading'))
+		const payload = await source.fetchPlaylist(
+			fullUrl,
+			allVideos ? null : maxVideos,
+		)
+		const { title, channel } = payload
+		const videos = toPlaylistVideos(payload.videos, longVideoSeconds)
+		log(t('extract.found', { count: videos.length, title }))
+		// Sin videos no hay nada que exportar: escribir igual dejaba carpetas
+		// con `total: 0` que parecían una corrida exitosa.
+		if (videos.length === 0) throw new Error(t('errors.emptyPlaylist'))
 
-			// Tracklists de candidatos (álbumes/mixes), solo si está habilitado.
-			const candidates = expandAlbums ? videos.filter((v) => v.isCandidate) : []
-			const tracklists = new Map<string, Track[]>()
-			if (candidates.length > 0) {
-				log(t('extract.candidates', { count: candidates.length }))
-				for (const v of candidates) {
-					const tracks = await fetchTracklist(page, v.videoId)
-					const title = v.rawTitle.slice(0, 50)
-					if (tracks.length > 0) {
-						tracklists.set(v.videoId, tracks)
-						log(t('extract.tracks', { count: tracks.length, title }))
-					} else {
-						log(t('extract.noTracklist', { title }))
-					}
-					await sleep(POLITE_SLEEP_MS) // ser educado con el servidor
+		// Tracklists de candidatos (álbumes/mixes), solo si está habilitado.
+		const candidates = expandAlbums ? videos.filter((v) => v.isCandidate) : []
+		const tracklists = new Map<string, Track[]>()
+		if (candidates.length > 0) {
+			log(t('extract.candidates', { count: candidates.length }))
+			for (const v of candidates) {
+				// Un video que falla no voltea la corrida entera: se avisa y se sigue.
+				// La fuente tira el error; decidir que no es fatal es del orquestador.
+				let tracks: Track[] = []
+				try {
+					tracks = parseTracklist(await source.readDescription(v.videoId))
+				} catch (err) {
+					console.warn(
+						t('extract.descriptionFailed', {
+							videoId: v.videoId,
+							message: (err as Error).message,
+						}),
+					)
 				}
+				const title = v.rawTitle.slice(0, 50)
+				if (tracks.length > 0) {
+					tracklists.set(v.videoId, tracks)
+					log(t('extract.tracks', { count: tracks.length, title }))
+				} else {
+					log(t('extract.noTracklist', { title }))
+				}
+				await sleep(POLITE_SLEEP_MS) // ser educado con el servidor
 			}
-
-			// Dedupe antes de filtrar (más barato), y el orden al final para que
-			// la renumeración de `position` refleje lo que realmente se exporta.
-			let songs = buildSongRows(videos, tracklists)
-			if (dedupe) songs = dedupeSongs(songs)
-			songs = applySongFilters(songs, {
-				videoTypeFilter,
-				genreFilter,
-				excludeUnavailable,
-			})
-			songs = applySongOrder(songs, songOrder)
-			const stamp = dayjs().format('YYYY-MM-DD_HH-mm-ss')
-			// Si el título es genérico (p. ej. "Videos"), el canal alcanza para
-			// reconocer la carpeta; si no, se antepone el canal al título.
-			const genericTitle = GENERIC_PLAYLIST_TITLES.test(title.trim())
-			const playListName = genericTitle ? channel : `${channel}-${title}`
-			const outDir = uniqueOutDir(
-				path.join(
-					process.cwd(),
-					'output',
-					`${sanitizeFilename(playListName)}_${stamp}`,
-				),
-			)
-			await writeOutputs({ songs, outDir, playListName, formats, columns })
-
-			const files = [...formats].map((f) => `playlist.${f}`).join(', ')
-			log(t('extract.done', { count: songs.length }))
-			log(
-				t('extract.outputPath', {
-					dir: path.relative(process.cwd(), outDir),
-					files,
-				}),
-			)
-			return { count: songs.length, outDir }
-		} finally {
-			await context.close()
 		}
+
+		// Dedupe antes de filtrar (más barato), y el orden al final para que
+		// la renumeración de `position` refleje lo que realmente se exporta.
+		let songs = buildSongRows(videos, tracklists)
+		if (dedupe) songs = dedupeSongs(songs)
+		songs = applySongFilters(songs, {
+			videoTypeFilter,
+			genreFilter,
+			excludeUnavailable,
+		})
+		songs = applySongOrder(songs, songOrder)
+		const stamp = dayjs().format('YYYY-MM-DD_HH-mm-ss')
+		// Si el título es genérico (p. ej. "Videos"), el canal alcanza para
+		// reconocer la carpeta; si no, se antepone el canal al título.
+		const genericTitle = GENERIC_PLAYLIST_TITLES.test(title.trim())
+		const playListName = genericTitle ? channel : `${channel}-${title}`
+		const outDir = uniqueOutDir(
+			path.join(
+				process.cwd(),
+				'output',
+				`${sanitizeFilename(playListName)}_${stamp}`,
+			),
+		)
+		await writeOutputs({ songs, outDir, playListName, formats, columns })
+
+		const files = [...formats].map((f) => `playlist.${f}`).join(', ')
+		log(t('extract.done', { count: songs.length }))
+		log(
+			t('extract.outputPath', {
+				dir: path.relative(process.cwd(), outDir),
+				files,
+			}),
+		)
+		return { count: songs.length, outDir }
 	} finally {
-		if (ownBrowser) await ownBrowser.close()
+		if (ownSession) await ownSession.close()
 	}
 }
 
@@ -1089,6 +847,7 @@ export {
 	parseTracklist,
 	projectSong,
 	resolveChannelNames,
+	toPlaylistVideos,
 	trackToSong,
 	videoToSong,
 }

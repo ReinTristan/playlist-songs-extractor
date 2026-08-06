@@ -10,30 +10,52 @@
 // Tipos
 // ---------------------------------------------------------------------------
 
-export interface PlaylistVideo {
+/**
+ * Un video tal como lo entrega una *fuente* (`sources/`): sólo señales crudas,
+ * nada derivado. El canal viene sin resolver —los anchors por un lado, el texto
+ * de la fila de metadata por el otro— porque elegir entre ambos es trabajo de
+ * `resolveChannelNames`, que vive en la capa de procesamiento y no tiene acceso
+ * al contexto del browser.
+ *
+ * `availability` sí la decide la fuente, aunque parezca heurística: los títulos
+ * literales "[Private video]"/"[Deleted video]" son un artefacto de cómo YouTube
+ * renderiza la página, y la API los reporta por otro camino. Cada fuente lo
+ * detecta a su manera y entrega la respuesta ya normalizada.
+ */
+export interface RawPlaylistVideo {
 	index: number // posición 1-based dentro de la playlist
 	rawTitle: string
-	channel: string[] // uno o más canales dueños (colaboraciones de YouTube)
+	chanAnchorTexts: string[] // textos de los anchors de canal (caso normal)
+	metaRowText: string // texto plano de metadata (videos de colaboración)
 	videoId: string
 	url: string
 	thumbnail: string
 	duration: string
-	durationSeconds: number
 	availability: 'available' | 'unavailable'
+}
+
+/**
+ * Un video ya procesado por `toPlaylistVideos`: lo crudo (menos las señales sin
+ * resolver) más lo que se deriva de ello. Todo lo que se agrega acá se calcula
+ * igual venga de donde venga el video, así que no depende de la fuente.
+ */
+export interface PlaylistVideo
+	extends Omit<RawPlaylistVideo, 'chanAnchorTexts' | 'metaRowText'> {
+	channel: string[] // uno o más canales dueños (colaboraciones de YouTube)
+	durationSeconds: number
 	videoType: VideoType
 	isCandidate: boolean
 }
 
 /**
- * Forma intermedia de un video tal como sale del `page.evaluate` de
- * `scrapePlaylist`: trae señales crudas del DOM (anchors de canal, texto de
- * la fila de metadata) en vez del `channel` ya resuelto, porque resolverlo
- * requiere `resolveChannelNames` (función pura de Node, sin acceso desde el
- * contexto del browser).
+ * Lo que devuelve cualquier fuente al pedirle una playlist. Es el único contrato
+ * que comparten el scraping de hoy y la YouTube Data API del futuro: datos
+ * crudos, sin interpretar.
  */
-export type RawPlaylistVideo = Omit<PlaylistVideo, 'channel'> & {
-	chanAnchorTexts: string[]
-	metaRowText: string
+export interface PlaylistPayload {
+	title: string
+	channel: string
+	videos: RawPlaylistVideo[]
 }
 
 export interface Track {
