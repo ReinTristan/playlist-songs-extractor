@@ -1,6 +1,12 @@
+minimumReleaseAge: 1440
+minimumReleaseAgeIgnoreMissingTime: false
+trustPolicy: no-downgrade
+
 overrides:
-  brace-expansion@<1.1.16: ^1.1.16
-  brace-expansion@<=5.0.7: ^5.0.8
-  brace-expansion@>=2.0.0 <2.1.2: ^2.1.2
+  brace-expansion@<1.1.18: ^1.1.18
+  brace-expansion@>=2.0.0 <2.1.4: ^2.1.4
+  brace-expansion@>=3.0.0 <3.0.6: ^3.0.6
+  brace-expansion@>=4.0.0 <5.0.9: ^5.0.9
+  fast-uri@>=3.0.0 <3.1.5: ^3.1.5
   tmp@<0.2.6: ^0.2.6
   uuid@<11.1.1: ^11.1.1
