@@ -1,6 +1,6 @@
 {
 	"name": "playlist-extractor",
-	"version": "3.2.2",
+	"version": "3.2.3",
 	"type": "module",
 	"scripts": {
 		"start": "node src/index.ts",
