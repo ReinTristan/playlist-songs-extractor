@@ -8,7 +8,8 @@
  * datos.
  *
  * Esa frontera existe para que una segunda fuente (la YouTube Data API v3, ver
- * ToDo.md) pueda entrar como hermana de este archivo sin tocar el extractor.
+ * specs/youtube-api-source.md) pueda entrar como hermana de este archivo
+ * sin tocar el extractor.
  *
  * Los selectores viven en `types.ts` y no acá: los comparte `debug-dom.ts`, que
  * existe justamente para diagnosticar cuándo YouTube cambia su markup.
