@@ -1,14 +1,14 @@
 /**
- * Utilidades puras y genéricas, sin dependencias de Playwright, del menú
- * interactivo ni de los tipos del dominio. Las comparten el CLI, el extractor
- * y el script de debug; varias se testean directamente en tests/.
+ * Pure, generic helpers, with no dependency on Playwright, the interactive
+ * menu or the domain types. Shared by the CLI, the extractor and the debug
+ * script; several are tested directly in tests/.
  */
 
-/** Espera `ms` milisegundos. */
+/** Waits `ms` milliseconds. */
 export const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Acepta una URL completa o un ID de lista y devuelve la URL normalizada. */
+/** Accepts a full URL or a playlist ID and returns the normalized URL. */
 export function normalizeUrl(raw: string): string {
 	const v = raw.trim()
 	if (!v) return ''
@@ -19,12 +19,12 @@ export function normalizeUrl(raw: string): string {
 }
 
 /**
- * Interpreta un límite de videos: solo dígitos, entero ≥ 1. Cualquier otra
- * cosa (vacío, "0", negativos, texto) devuelve null.
+ * Parses a video limit: digits only, integer ≥ 1. Anything else (empty, "0",
+ * negatives, text) returns null.
  *
- * "Todos" ya no se expresa como palabra —eso no escalaba a varios idiomas—
- * sino con el booleano `allVideos` de `ExtractConfig`: en el menú es una
- * selección y en el modo rápido es simplemente omitir el argumento.
+ * "All" is no longer expressed as a word (that didn't scale to several
+ * languages) but with `ExtractConfig`'s `allVideos` boolean: in the menu it's a
+ * choice, and in quick mode it's simply leaving the argument out.
  */
 export function parsePositiveInt(
 	raw: string | undefined | null,
@@ -36,13 +36,13 @@ export function parsePositiveInt(
 }
 
 /**
- * Separa los `--flags` del resto del argv, en cualquier posición, para que los
- * argumentos posicionales (URL, límite) sigan leyéndose por índice.
+ * Splits the `--flags` out of argv, in any position, so the positional
+ * arguments (URL, limit) can still be read by index.
  *
- * Acepta `--flag=valor` y `--flag valor`; esta última forma sólo para los
- * nombres listados en `valueFlags`, porque si no un flag booleano se comería
- * el posicional siguiente (`--dedupe "URL"` tomaría la URL como su valor).
- * Los flags sin valor quedan como `true`.
+ * Accepts `--flag=value` and `--flag value`; the latter only for the names
+ * listed in `valueFlags`, because otherwise a boolean flag would swallow the
+ * next positional (`--dedupe "URL"` would take the URL as its value).
+ * Flags without a value become `true`.
  */
 export function parseFlags(
 	argv: string[],
@@ -62,7 +62,7 @@ export function parseFlags(
 			const name = bare[1]
 			if (valueFlags.includes(name) && i + 1 < argv.length) {
 				flags.set(name, argv[i + 1])
-				i++ // consumir el valor
+				i++ // consume the value
 			} else {
 				flags.set(name, true)
 			}
@@ -74,10 +74,10 @@ export function parseFlags(
 }
 
 /**
- * Atajo histórico sobre `parseFlags` para el idioma: `--lang=<code>` /
- * `--lang <code>` (o `--locale`). Se resuelve aparte del resto de los flags
- * porque hay que conocer el idioma antes de imprimir cualquier mensaje,
- * incluidos los errores de las otras opciones.
+ * Historical shortcut over `parseFlags` for the language: `--lang=<code>` /
+ * `--lang <code>` (or `--locale`). It's resolved apart from the other flags
+ * because the language has to be known before printing any message,
+ * including the errors of the other options.
  */
 export function parseLangFlag(argv: string[]): {
 	lang?: string
@@ -94,7 +94,7 @@ export function parseLangFlag(argv: string[]): {
 		}
 		if (/^--(?:lang|locale)$/.test(arg)) {
 			lang = argv[i + 1]
-			i++ // consumir el valor
+			i++ // consume the value
 			continue
 		}
 		rest.push(arg)
@@ -102,14 +102,14 @@ export function parseLangFlag(argv: string[]): {
 	return { lang, rest }
 }
 
-/** Convierte "h:mm:ss" o "mm:ss" a segundos. */
+/** Converts "h:mm:ss" or "mm:ss" to seconds. */
 export function durationToSeconds(duration: string): number {
 	const parts = duration.split(':').map((p) => parseInt(p.trim(), 10))
 	if (parts.some((n) => Number.isNaN(n)) || parts.length === 0) return 0
 	return parts.reduce((acc, n) => acc * 60 + n, 0)
 }
 
-/** Sanitiza un nombre para usarlo como carpeta/archivo. */
+/** Sanitizes a name so it can be used as a folder/file name. */
 export function sanitizeFilename(name: string): string {
 	return (
 		name
@@ -121,16 +121,16 @@ export function sanitizeFilename(name: string): string {
 }
 
 /**
- * Escapa los metacaracteres de una cadena para poder interpolarla dentro de una
- * RegExp como texto literal. Lo usa el parseo de títulos, que construye sus
- * patrones a partir de listas de keywords (géneros, tipos de mezcla) donde
- * cualquier entrada puede traer `&`, `+`, `.` o paréntesis.
+ * Escapes a string's metacharacters so it can be interpolated into a RegExp as
+ * literal text. Used by title parsing, which builds its patterns from keyword
+ * lists (genres, mix types) where any entry may contain `&`, `+`, `.` or
+ * parentheses.
  */
 export function escapeRegex(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-/** Devuelve una copia barajada del array (Fisher–Yates), sin mutar el original. */
+/** Returns a shuffled copy of the array (Fisher–Yates), without mutating the original. */
 export function shuffle<T>(arr: T[]): T[] {
 	const out = [...arr]
 	for (let i = out.length - 1; i > 0; i--) {

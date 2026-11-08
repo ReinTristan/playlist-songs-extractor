@@ -5,9 +5,9 @@ import path from 'node:path'
 import { describe, it } from 'node:test'
 
 /**
- * El store de `conf` se apunta a un directorio temporal ANTES de importar
- * `config.ts`: el módulo lo crea de forma perezosa, así que basta con setear
- * la variable antes del primer acceso para no tocar la preferencia real.
+ * The `conf` store is pointed at a temporary directory BEFORE importing
+ * `config.ts`: the module creates it lazily, so setting the variable before
+ * the first access is enough to never touch the real preference.
  */
 process.env.PLAYLIST_CONFIG_DIR = mkdtempSync(
 	path.join(tmpdir(), 'ple-config-test-'),
@@ -89,7 +89,7 @@ describe('setSavedConfig / getSavedConfig', () => {
 			}),
 		)
 		const saved = getSavedConfig()
-		// Se guarda como array: un Set no sobrevive al JSON del store.
+		// Stored as an array: a Set doesn't survive the store's JSON.
 		assert.deepEqual(saved.formats, ['json', 'csv'])
 		assert.deepEqual(saved.columns, ['position', 'songTitle'])
 		assert.equal(saved.dedupe, true)
@@ -109,7 +109,7 @@ describe('setSavedConfig / getSavedConfig', () => {
 describe('recentUrls', () => {
 	it('guarda la más reciente primero, sin repetidos, con tope de 10', () => {
 		for (let i = 1; i <= 12; i++) pushRecentUrl(`https://yt/p?list=${i}`)
-		pushRecentUrl('https://yt/p?list=5') // repetida: sube al frente, no duplica
+		pushRecentUrl('https://yt/p?list=5') // repeated: moves to the front, doesn't duplicate
 		const urls = getRecentUrls()
 		assert.equal(urls.length, 10)
 		assert.equal(urls[0], 'https://yt/p?list=5')

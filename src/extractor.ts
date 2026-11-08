@@ -1,15 +1,15 @@
 /**
- * Extractor de canciones de playlists de YouTube (procesamiento / orquestación).
+ * Song extractor for YouTube playlists (processing / orchestration).
  *
- * Este módulo interpreta los datos crudos que entrega una *fuente* (`sources/`)
- * y los convierte en filas de canciones: clasificación, parseo de títulos y de
- * tracklists, filtros, orden y exportación. No sabe hablar con YouTube — de eso
- * se encarga `sources/scrape.ts` (y, a futuro, la fuente de la API).
+ * This module interprets the raw data handed over by a *source* (`sources/`)
+ * and turns it into song rows: classification, title and tracklist parsing,
+ * filters, ordering and export. It doesn't know how to talk to YouTube — that's
+ * `sources/scrape.ts`'s job (and, in the future, the API source's).
  *
- * El arranque (CLI interactivo y modo argv) vive en `cli.ts`; los tipos y
- * constantes compartidos, en `types.ts`.
+ * Startup lives in `index.ts` (argv quick mode) and `cli.ts` (interactive
+ * menu); the shared types and constants, in `types.ts`.
  *
- * Genera output/<playlist>_<timestamp local>/ con los formatos seleccionados
+ * Produces output/<playlist>_<local timestamp>/ with the selected formats
  * (playlist.json, playlist.csv, playlist.xlsx).
  */
 
@@ -58,69 +58,70 @@ import {
 } from './utils.ts'
 
 // ---------------------------------------------------------------------------
-// Utilidades
+// Helpers
 // ---------------------------------------------------------------------------
 
-// Separadores de artistas, en dos clases:
-//  - Símbolos (, & + × *): se aceptan con o sin espacios alrededor.
-//  - Tokens de palabra (x, vs/vs., w/, with, and): exigen espacio a ambos lados
-//    para NO partir nombres ("Sandstorm" por "and", "Maxwell" por "x", etc.).
-// No se separa por "/" suelto a propósito, para preservar "Au/Ra", "AC/DC".
-// Nota: separar por " and " es agresivo (parte "Chase and Status"), pero es el
-// criterio que el proyecto ya usa para canales de colaboración y lo que se busca
-// acá: priorizar separar todos los artistas de un título con muchos separadores.
-// Regex derivadas de DASH_CLASS (types.ts). Se construyen una sola vez a nivel
-// de módulo: son constantes, y las que llevan /g se usan siempre con
-// String.replace, que resetea lastIndex en cada llamada.
+// Artist separators, in two classes:
+//  - Symbols (, & + × *): accepted with or without surrounding spaces.
+//  - Word tokens (x, vs/vs., w/, with, and): require a space on both sides so
+//    names DON'T get split ("Sandstorm" on "and", "Maxwell" on "x", etc.).
+// A bare "/" is deliberately not a separator, to preserve "Au/Ra", "AC/DC".
+// Note: splitting on " and " is aggressive (it splits "Chase and Status"), but
+// it's the rule the project already uses for collaboration channels and what's
+// wanted here: favour splitting every artist out of a title with many
+// separators.
+// Regexes derived from DASH_CLASS (types.ts). They're built once at module
+// level: they're constants, and the /g ones are always used with
+// String.replace, which resets lastIndex on every call.
 const FEAT_RE = new RegExp(
 	`[([]?\\s*\\b(?:feat|ft|featuring)\\b\\.?\\s*([^)\\]]+?)\\s*(?:[)\\]]|(?=\\s${DASH_CLASS}\\s|$))`,
 	'gi',
 )
 const FEAT_WITH_RE = /[([]\s*(?:with|con)\s+([^)\]]+?)\s*[)\]]/gi
-/** Separador principal "artista - canción" (el guion tiene prioridad). */
+/** Main "artist - song" separator (the dash takes priority). */
 const DASH_SPLIT_RE = new RegExp(`^(.*?)\\s+${DASH_CLASS}\\s+(.*)$`)
-/** Separador alternativo cuando no hay guion. */
+/** Alternative separator when there's no dash. */
 const SLASH_PIPE_SPLIT_RE = /^(.*?)\s+[/|]\s+(.*)$/
-/** Guion con espacios, para detectar el segmento principal entre pipes. */
+/** Spaced dash, to detect the main segment between pipes. */
 const SPACED_DASH_RE = new RegExp(`\\s${DASH_CLASS}\\s`)
-/** Separador colgado al final del título ya limpio. */
+/** A separator left dangling at the end of the cleaned title. */
 const TRAILING_SEPARATOR_RE = new RegExp(`\\s*[${DASH_CHARS}/|]\\s*$`)
-/** Basura al inicio/final de una línea de tracklist. */
+/** Junk at the start/end of a tracklist line. */
 const TRACK_LINE_LEAD_JUNK_RE = new RegExp(`^[\\s${DASH_CHARS}.)\\][(]+`)
 const TRACK_LINE_TAIL_JUNK_RE = new RegExp(`[\\s${DASH_CHARS}.([]+$`)
-/** Numeración sobrante al inicio del texto de una pista. */
+/** Leftover numbering at the start of a track's text. */
 const TRACK_NUMBER_LEAD_RE = new RegExp(`^${TRACK_NUMBER_PATTERN}\\s*`)
-/** Línea numerada de una tracklist: "1. ", "12) ", "100 - ". */
+/** A numbered tracklist line: "1. ", "12) ", "100 - ". */
 const NUMBERED_LINE_RE = new RegExp(`^(\\d{1,3})\\s*[.)${DASH_CHARS}]\\s+(.+)$`)
-/** Guion que sobra entre el timestamp inicial y el título de la pista. */
+/** Leftover dash between the leading timestamp and the track title. */
 const LEADING_DASH_RE = new RegExp(`^\\s*${DASH_CLASS}\\s*`)
 
 /**
- * Géneros de la whitelist ya compilados a RegExp. `parseTitle` los prueba en
- * bucle contra cada corchete y cada segmento de cada título, así que
- * construirlos por llamada era compilar ~60 regex por canción. El Map además
- * sirve de índice para preguntar si un texto *es* exactamente un género.
+ * The whitelist's genres, precompiled to RegExp. `parseTitle` tests them in a
+ * loop against every bracket and every segment of every title, so building
+ * them per call meant compiling ~60 regexes per song. The Map also works as an
+ * index to ask whether a text *is* exactly a genre.
  */
 const GENRE_MATCHERS = new Map<string, RegExp>(
 	GENRE_KEYWORDS.map((g) => [g, new RegExp(`\\b${escapeRegex(g)}\\b`, 'i')]),
 )
 
-/** Contenido de un paréntesis/corchete, sin anidar (pasos 3 y 4 de parseTitle). */
+/** A parenthesis/bracket's content, non-nested (steps 3 and 4 of parseTitle). */
 const BRACKET_CONTENT_RE = /[([]([^()[\]]+)[)\]]/g
 
-/** Alternancia de MIX_TYPE_KEYWORDS, base de las tres regex que siguen. */
+/** Alternation of MIX_TYPE_KEYWORDS, the base of the three regexes below. */
 const MIX_TYPE_ALT = MIX_TYPE_KEYWORDS.map((k) => escapeRegex(k)).join('|')
-/** Descriptor de mezcla dentro de un paréntesis/corchete: "(Nero Remix)". */
+/** Mix descriptor inside a parenthesis/bracket: "(Nero Remix)". */
 const BRACKET_MIX_RE = new RegExp(
 	`[\\(\\[]([^()\\[\\]]*\\b(?:${MIX_TYPE_ALT})\\b[^()\\[\\]]*)[\\)\\]]`,
 	'i',
 )
-/** Descriptor de mezcla en el último segmento tras un guion: "- Extended Mix". */
+/** Mix descriptor in the last segment after a dash: "- Extended Mix". */
 const TAIL_MIX_RE = new RegExp(
 	`\\s*${DASH_CLASS}\\s*([^${DASH_CHARS}]*\\b(?:${MIX_TYPE_ALT})\\b[^${DASH_CHARS}]*)$`,
 	'i',
 )
-/** Keyword de mezcla suelta, sin delimitador alguno. */
+/** A bare mix keyword, with no delimiter at all. */
 const BARE_MIX_RE = new RegExp(`\\b(${MIX_TYPE_ALT})\\b`, 'i')
 
 function splitArtists(raw: string): string[] {
@@ -131,10 +132,10 @@ function splitArtists(raw: string): string[] {
 }
 
 /**
- * Acumula en `into` los géneros de la whitelist presentes en `text`, sin
- * repetir. Lo comparten el paso 3 de `parseTitle` (contenido de los corchetes)
- * y el 4b (segmentos separados por pipe), que hacían exactamente lo mismo
- * contra fuentes de texto distintas.
+ * Accumulates into `into` the whitelist genres present in `text`, without
+ * repeats. Shared by `parseTitle`'s step 3 (bracket contents) and 4b
+ * (pipe-separated segments), which did exactly the same thing against
+ * different text sources.
  */
 function collectGenres(text: string, into: string[]): void {
 	for (const [genre, re] of GENRE_MATCHERS) {
@@ -143,7 +144,7 @@ function collectGenres(text: string, into: string[]): void {
 	}
 }
 
-/** Parte un título por "|" en segmentos limpios; `[]` si no hay ningún pipe. */
+/** Splits a title on "|" into clean segments; `[]` if there's no pipe. */
 function splitPipeSegments(working: string): string[] {
 	if (!working.includes('|')) return []
 	return working
@@ -153,13 +154,13 @@ function splitPipeSegments(working: string): string[] {
 }
 
 /**
- * Decide con qué segmento se queda el título tras separarlo por pipes.
+ * Decides which segment the title keeps after splitting it on pipes.
  *
- * Si alguno trae un guion es el formato NCS ("Artista - Canción | Género |
- * Label"): ese segmento es el contenido y los demás son metadata que el paso
- * 4b ya leyó. Si ninguno lo trae, el pipe *es* el separador artista/canción,
- * así que se descartan los segmentos que son puro género (ya capturados) y se
- * devuelven los demás con el pipe intacto para que el paso 5 los separe.
+ * If one has a dash it's the NCS format ("Artist - Song | Genre | Label"): that
+ * segment is the content and the rest are metadata step 4b already read. If
+ * none has one, the pipe *is* the artist/song separator, so segments that are
+ * pure genre (already captured) are dropped and the rest are returned with the
+ * pipe intact for step 5 to split.
  */
 function pickPipeMainSegment(segments: string[]): string {
 	const dashSeg = segments.find((s) => SPACED_DASH_RE.test(s))
@@ -169,12 +170,12 @@ function pickPipeMainSegment(segments: string[]): string {
 }
 
 /**
- * Resuelve el/los nombre(s) de canal de un video a partir de dos señales
- * crudas leídas del DOM. Prioriza los anchors de canal (caso normal); si no
- * hay ninguno (videos de "colaboración" con varios canales dueños, donde
- * YouTube no pone links y en cambio escribe los nombres como texto plano,
- * p. ej. "Alan Walker and Au/Ra" o con coma de Oxford "A, B, and C"), separa
- * ese texto por " and "/",".
+ * Resolves a video's channel name(s) from two raw signals read from the DOM.
+ * Prefers the channel anchors (the normal case); if there are none
+ * ("collaboration" videos with several owner channels, where YouTube puts no
+ * links and writes the names as plain text instead, e.g.
+ * "Alan Walker and Au/Ra" or with an Oxford comma "A, B, and C"), splits that
+ * text on " and "/",".
  */
 function resolveChannelNames(
 	anchorTexts: string[],
@@ -193,7 +194,7 @@ function resolveChannelNames(
 }
 
 // ---------------------------------------------------------------------------
-// Parseo de título
+// Title parsing
 // ---------------------------------------------------------------------------
 
 function parseTitle(raw: string): ParsedTitle {
@@ -202,10 +203,10 @@ function parseTitle(raw: string): ParsedTitle {
 	const genres: string[] = []
 	let mixType = 'original'
 
-	// 1) Featured: feat./ft./featuring en cualquier lugar; with/con sólo dentro de paréntesis.
-	//    El terminador es un lookahead para NO consumir el guion separador principal:
-	//    en "Artista feat. Invitado - Canción" el " - " debe sobrevivir al paso 5.
-	//    Se tolera "feat."/"ft." pegado al nombre sin espacio ("feat.Ddark").
+	// 1) Featured: feat./ft./featuring anywhere; with/con only inside parentheses.
+	//    The terminator is a lookahead so the main separator dash is NOT consumed:
+	//    in "Artist feat. Guest - Song" the " - " has to survive until step 5.
+	//    "feat."/"ft." glued to the name with no space ("feat.Ddark") is tolerated.
 	working = working.replace(FEAT_RE, (_m, names: string) => {
 		splitArtists(names).forEach((a) => {
 			featuredArtists.push(a)
@@ -220,21 +221,21 @@ function parseTitle(raw: string): ParsedTitle {
 		return ' '
 	})
 
-	// 2) mixType: buscar palabra clave; preferir el contenido del paréntesis/corchete que la contiene.
-	//    El texto que lo contiene se anota en `mixTypeText` pero NO se borra
-	//    todavía: el paso 3 necesita ver ese paréntesis para pescar géneros que
-	//    vengan adentro ("(Deep House Remix)"). Se borra en el paso 4.
+	// 2) mixType: look for a keyword; prefer the content of the parenthesis/bracket containing it.
+	//    The text containing it is noted in `mixTypeText` but NOT removed yet:
+	//    step 3 needs to see that parenthesis to catch genres inside it
+	//    ("(Deep House Remix)"). It's removed in step 4.
 	let mixTypeText = ''
 	const bracketMatch = working.match(BRACKET_MIX_RE)
 	if (bracketMatch) {
 		mixType = bracketMatch[1].trim()
 		mixTypeText = bracketMatch[0]
 	} else {
-		// Sin paréntesis, sólo se considera "descriptor de mezcla" el último
-		// segmento tras un guion ("Artista - Canción - Extended Mix"), y sólo
-		// si antes queda otro guion: con uno solo, ese último segmento *es* el
-		// título de la canción ("Artist - Cover Me In Sunshine") y borrarlo se
-		// llevaría puesta la canción entera.
+		// Without parentheses, only the last segment after a dash counts as a
+		// "mix descriptor" ("Artist - Song - Extended Mix"), and only if
+		// another dash comes before it: with just one, that last segment *is*
+		// the song title ("Artist - Cover Me In Sunshine") and removing it
+		// would take the whole song with it.
 		const tail = working.match(TAIL_MIX_RE)
 		const head = tail ? working.slice(0, tail.index) : ''
 		if (tail && SPACED_DASH_RE.test(head)) {
@@ -246,36 +247,36 @@ function parseTitle(raw: string): ParsedTitle {
 		}
 	}
 
-	// 3) genres: buscar géneros de la lista blanca dentro de corchetes/paréntesis.
+	// 3) genres: look for whitelist genres inside brackets/parentheses.
 	for (const chunk of working.match(BRACKET_CONTENT_RE) || [])
 		collectGenres(chunk.slice(1, -1), genres)
 
-	// 4) Quitar ruido.
+	// 4) Strip noise.
 	for (const pattern of NOISE_PATTERNS) working = working.replace(pattern, ' ')
 
-	// El descriptor de mezcla ya está en `mixType` y sus géneros ya se
-	// capturaron: repetirlo dentro de songTitle sólo ensucia el export.
+	// The mix descriptor is already in `mixType` and its genres were already
+	// captured: repeating it inside songTitle only clutters the export.
 	if (mixTypeText) working = working.replace(mixTypeText, ' ')
 
-	// Quitar corchetes/paréntesis que sólo contienen géneros (ya capturados).
+	// Remove brackets/parentheses that only contain genres (already captured).
 	working = working.replace(BRACKET_CONTENT_RE, (m, inner: string) =>
 		GENRE_MATCHERS.has(inner.trim().toLowerCase()) ? ' ' : m,
 	)
 
 	working = working.replace(/\s+/g, ' ').trim()
 
-	// 4b) Segmentos separados por "|" (formato común: "Artista - Canción | Género | Label").
-	//     Todos aportan géneros; sólo uno sobrevive como contenido.
+	// 4b) "|"-separated segments (common format: "Artist - Song | Genre | Label").
+	//     All of them contribute genres; only one survives as content.
 	const segments = splitPipeSegments(working)
 	if (segments.length > 0) {
 		for (const seg of segments) collectGenres(seg, genres)
 		working = pickPipeMainSegment(segments)
 	}
 
-	// 5) Artistas + canción: separar por el separador principal.
-	//    El guion es prioritario (se prueba primero); si no hay, se aceptan slash
-	//    o pipe como alternativa, exigiendo espacios alrededor para no partir
-	//    nombres con "/" interno sin espacios (p. ej. "Au/Ra", "AC/DC").
+	// 5) Artists + song: split on the main separator.
+	//    The dash takes priority (tried first); if there's none, slash or pipe
+	//    are accepted as an alternative, requiring surrounding spaces so names
+	//    with an inner unspaced "/" aren't split (e.g. "Au/Ra", "AC/DC").
 	let artists: string[] = []
 	let songTitle = working
 	const primaryMatch =
@@ -285,13 +286,13 @@ function parseTitle(raw: string): ParsedTitle {
 		songTitle = primaryMatch[2].trim()
 	}
 
-	// Limpieza final del título de la canción.
+	// Final cleanup of the song title.
 	songTitle = songTitle
 		.replace(TRAILING_SEPARATOR_RE, '')
 		.replace(/\s+/g, ' ')
 		.trim()
 
-	// Quitar géneros genéricos contenidos en otro más específico (p. ej. "house" si hay "deep house").
+	// Drop generic genres contained in a more specific one (e.g. "house" when there's "deep house").
 	const refinedGenres = genres.filter((g) => {
 		const re = GENRE_MATCHERS.get(g)
 		if (!re) return true
@@ -302,7 +303,7 @@ function parseTitle(raw: string): ParsedTitle {
 }
 
 // ---------------------------------------------------------------------------
-// Tracklist (descripción de álbumes/mixes)
+// Tracklist (album/mix descriptions)
 // ---------------------------------------------------------------------------
 
 function parseTracklist(description: string): Track[] {
@@ -312,7 +313,7 @@ function parseTracklist(description: string): Track[] {
 		.map((l) => l.trim())
 		.filter(Boolean)
 
-	// Estrategia A: timestamps (h:)mm:ss
+	// Strategy A: (h:)mm:ss timestamps
 	const tsTracks: Track[] = []
 	for (const line of lines) {
 		const m = line.match(ANY_TS)
@@ -322,9 +323,9 @@ function parseTracklist(description: string): Track[] {
 			.replace(TRACK_LINE_LEAD_JUNK_RE, '')
 			.replace(TRACK_LINE_TAIL_JUNK_RE, '')
 			.trim()
-		rest = rest.replace(TRACK_NUMBER_LEAD_RE, '') // quitar numeración inicial sobrante
-		// Quitar timestamp residual solo si la línea original era un rango "ts - ts"
-		// (si no, un título que es una hora, p. ej. "11:11", se perdería).
+		rest = rest.replace(TRACK_NUMBER_LEAD_RE, '') // strip leftover leading numbering
+		// Strip a residual timestamp only if the original line was a "ts - ts" range
+		// (otherwise a title that is a time, e.g. "11:11", would be lost).
 		if (RANGE_TS.test(line)) {
 			rest = rest.replace(LEADING_TS, '')
 		}
@@ -338,15 +339,15 @@ function parseTracklist(description: string): Track[] {
 	}
 	if (tsTracks.length >= 3) return tsTracks
 
-	// Estrategia B: numerados "1. ", "1) ", "1 - "
+	// Strategy B: numbered "1. ", "1) ", "1 - "
 	const numTracks: Track[] = []
 	for (const line of lines) {
 		const m = line.match(NUMBERED_LINE_RE)
 		if (!m) continue
-		// Puede venir un timestamp al inicio ("1. 05:36 Artista - Título"), al
-		// final ("1. Artista - Título 3:45") o en ambos lados (inicio y duración).
-		// Se limpian los dos de forma independiente y el inicial manda como
-		// `startTimestamp` por ser el que marca dónde empieza la pista.
+		// There can be a timestamp at the start ("1. 05:36 Artist - Title"), at
+		// the end ("1. Artist - Title 3:45") or on both sides (start and
+		// duration). Both are stripped independently and the leading one wins as
+		// `startTimestamp`, since it's the one that marks where the track starts.
 		let rest = m[2]
 		let startTimestamp = ''
 		const leadTs = rest.match(NUM_LEAD_TS)
@@ -374,7 +375,7 @@ function parseTracklist(description: string): Track[] {
 }
 
 // ---------------------------------------------------------------------------
-// Clasificación de tipo de video
+// Video type classification
 // ---------------------------------------------------------------------------
 
 function classifyVideoType(
@@ -392,32 +393,32 @@ function classifyVideoType(
 		new RegExp(`\\b${k}\\b`).test(lower),
 	)
 
-	// Sólo los videos largos se abren para extraer tracklist: si no aparece
-	// ninguna, el video cae solo a canción única. Pero "largo" no alcanza para
-	// *etiquetarlo* álbum o mix — un extended o un concierto de 25 minutos sin
-	// ninguna keyword no es ninguna de las dos cosas, y salía mal en el export.
+	// Only long videos are opened to extract a tracklist: if none shows up, the
+	// video falls back to a single song on its own. But "long" isn't enough to
+	// *label* it an album or a mix — a 25-minute extended track or concert with
+	// no keyword is neither, and it came out wrong in the export.
 	if (isLong) {
 		const videoType = hasAlbumKw ? 'album' : hasMixKw ? 'mix' : 'single'
 		return { videoType, isCandidate: true }
 	}
-	// Videos cortos con keyword de álbum/mix igual se etiquetan, pero sin expandir.
+	// Short videos with an album/mix keyword are still labeled, but not expanded.
 	if (hasAlbumKw) return { videoType: 'album', isCandidate: false }
 	if (hasMixKw) return { videoType: 'mix', isCandidate: false }
 	return { videoType: 'single', isCandidate: false }
 }
 
 // ---------------------------------------------------------------------------
-// Post-proceso de los videos crudos
+// Post-processing of the raw videos
 // ---------------------------------------------------------------------------
 
 /**
- * Convierte los videos crudos de una fuente en videos de dominio, derivando lo
- * que se calcula igual venga de donde venga: duración en segundos, tipo de video
- * y el/los canal(es) resueltos.
+ * Turns a source's raw videos into domain videos, deriving what's computed the
+ * same way wherever they came from: duration in seconds, video type and the
+ * resolved channel(s).
  *
- * Vive acá y no en `sources/` a propósito: es el paso que hace que el resto del
- * pipeline no tenga que saber si los datos salieron del DOM o de una API. Es
- * puro y no muta la entrada.
+ * It lives here and not in `sources/` on purpose: it's the step that keeps the
+ * rest of the pipeline from having to know whether the data came from the DOM
+ * or from an API. It's pure and doesn't mutate its input.
  */
 function toPlaylistVideos(
 	raw: RawPlaylistVideo[],
@@ -425,8 +426,8 @@ function toPlaylistVideos(
 ): PlaylistVideo[] {
 	return raw.map(({ chanAnchorTexts, metaRowText, ...rest }) => {
 		const durationSeconds = durationToSeconds(rest.duration)
-		// Un video no disponible no se clasifica: aplicar las heurísticas sobre un
-		// "[Private video]" sólo produciría etiquetas inventadas.
+		// An unavailable video isn't classified: running the heuristics over a
+		// "[Private video]" would only produce made-up labels.
 		const { videoType, isCandidate } =
 			rest.availability === 'available'
 				? classifyVideoType(rest.rawTitle, durationSeconds, longVideoSeconds)
@@ -442,7 +443,7 @@ function toPlaylistVideos(
 }
 
 // ---------------------------------------------------------------------------
-// Aplanado a filas de canciones
+// Flattening into song rows
 // ---------------------------------------------------------------------------
 
 function videoToSong(v: PlaylistVideo): Song {
@@ -529,12 +530,12 @@ function buildSongRows(
 }
 
 /**
- * Descarta canciones repetidas conservando la primera aparición.
+ * Drops repeated songs, keeping the first occurrence.
  *
- * La clave es `videoId` + `startTimestamp` y no sólo el videoId: las pistas de
- * un álbum/mix expandido comparten el video de origen y se perderían todas
- * menos la primera. Las canciones sin videoId (videos privados/borrados) nunca
- * se deduplican entre sí: no hay con qué distinguirlas.
+ * The key is `videoId` + `startTimestamp` and not just the videoId: the tracks
+ * of an expanded album/mix share the source video and all but the first would
+ * be lost. Songs with no videoId (private/deleted videos) are never deduped
+ * against each other: there's nothing to tell them apart by.
  */
 function dedupeSongs(songs: Song[]): Song[] {
 	const seen = new Set<string>()
@@ -548,8 +549,8 @@ function dedupeSongs(songs: Song[]): Song[] {
 }
 
 /**
- * Aplica los filtros opcionales de la config (`null` = sin filtrar). El filtro
- * de género acepta una canción si tiene *alguno* de los géneros pedidos.
+ * Applies the config's optional filters (`null` = no filter). The genre filter
+ * accepts a song if it has *any* of the requested genres.
  */
 function applySongFilters(
 	songs: Song[],
@@ -577,7 +578,7 @@ function applySongFilters(
 const byTitleAsc = (a: Song, b: Song): number =>
 	a.songTitle.localeCompare(b.songTitle, undefined, { sensitivity: 'base' })
 
-/** Aplica el orden elegido (opción extra) y renumera `position` si ya no es el original. */
+/** Applies the chosen order (extra option) and renumbers `position` if it's no longer the original. */
 function applySongOrder(songs: Song[], order: SongOrder): Song[] {
 	if (order === 'original') return songs
 	let ordered: Song[]
@@ -599,7 +600,7 @@ function applySongOrder(songs: Song[], order: SongOrder): Song[] {
 }
 
 // ---------------------------------------------------------------------------
-// Exportadores
+// Exporters
 // ---------------------------------------------------------------------------
 
 function flattenForTable(
@@ -614,7 +615,7 @@ function flattenForTable(
 	return row
 }
 
-/** Proyecta una canción a solo las keys seleccionadas (para el JSON). */
+/** Projects a song onto only the selected keys (for the JSON). */
 function projectSong(song: Song, columns: Column[]): Partial<Song> {
 	const out: Partial<Song> = {}
 	for (const col of columns) {
@@ -624,10 +625,10 @@ function projectSong(song: Song, columns: Column[]): Partial<Song> {
 }
 
 /**
- * Evita pisar una corrida anterior: el timestamp tiene resolución de un
- * segundo, y `mkdir(recursive)` no falla si la carpeta ya existe, así que dos
- * extracciones seguidas de la misma playlist sobrescribían los archivos de la
- * primera sin decir nada. Devuelve la ruta libre (`…_2`, `…_3`, …).
+ * Avoids overwriting a previous run: the timestamp has one-second resolution,
+ * and `mkdir(recursive)` doesn't fail if the folder already exists, so two
+ * back-to-back extractions of the same playlist silently overwrote the first
+ * one's files. Returns the free path (`…_2`, `…_3`, …).
  */
 function uniqueOutDir(base: string): string {
 	let candidate = base
@@ -648,9 +649,9 @@ async function writeOutputs({
 	formats: Set<Format>
 	columns: (keyof Song)[]
 }): Promise<void> {
-	// Columnas elegidas, en el orden elegido por el usuario. Una key que no
-	// existe se descarta en vez de sustituirse: antes caía a COLUMNS[0] y
-	// producía una columna "position" duplicada sin avisar de nada.
+	// Selected columns, in the order the user chose. A key that doesn't exist
+	// is dropped instead of substituted: it used to fall back to COLUMNS[0] and
+	// produce a duplicate "position" column without any warning.
 	const byKey = new Map(COLUMNS.map((c) => [c.key, c]))
 	const selectedColumns = columns
 		.map((k) => byKey.get(k))
@@ -661,7 +662,7 @@ async function writeOutputs({
 		)
 	await mkdir(outDir, { recursive: true })
 
-	// JSON (arrays nativos), proyectado a las columnas elegidas.
+	// JSON (native arrays), projected onto the selected columns.
 	if (formats.has('json')) {
 		await writeFile(
 			path.join(outDir, 'playlist.json'),
@@ -678,12 +679,12 @@ async function writeOutputs({
 		)
 	}
 
-	// Workbook compartido para XLSX y CSV (arrays como texto).
+	// Workbook shared by XLSX and CSV (arrays as text).
 	if (formats.has('xlsx') || formats.has('csv')) {
 		const wb = new ExcelJS.Workbook()
 		const ws = wb.addWorksheet(t('output.sheetName'))
-		// Header traducido, key canónica: lo visible cambia con el idioma, los
-		// datos no.
+		// Translated header, canonical key: what's visible changes with the
+		// language, the data doesn't.
 		ws.columns = selectedColumns.map((c) => ({
 			header: columnHeader(c.key),
 			key: c.key as string,
@@ -701,16 +702,16 @@ async function writeOutputs({
 }
 
 // ---------------------------------------------------------------------------
-// Extracción (orquestación)
+// Extraction (orchestration)
 // ---------------------------------------------------------------------------
 
 /**
- * Ejecuta una extracción completa según `config`: pide la playlist a la fuente,
- * (opcionalmente) expande álbumes/mixes y escribe los archivos. Devuelve el
- * número de canciones y la carpeta de salida.
+ * Runs a full extraction according to `config`: asks the source for the
+ * playlist, (optionally) expands albums/mixes and writes the files. Returns the
+ * number of songs and the output folder.
  *
- * Si se pasa `session` se reutiliza (y no se cierra aquí); si no, se abre una
- * propia que se cierra al terminar.
+ * If `session` is passed it's reused (and not closed here); otherwise it opens
+ * its own, which is closed when done.
  */
 export async function runExtraction(
 	config: ExtractConfig,
@@ -742,8 +743,8 @@ export async function runExtraction(
 		)
 	const log = config.onProgress ?? console.log
 
-	// La validación de arriba corre ANTES de abrir nada: una config inválida no
-	// tiene por qué costar el arranque de un Chromium.
+	// The validation above runs BEFORE opening anything: an invalid config has
+	// no reason to cost a Chromium launch.
 	let ownSession: ScrapeSession | null = null
 	try {
 		let source: ScrapeSession
@@ -763,18 +764,19 @@ export async function runExtraction(
 		const { title, channel } = payload
 		const videos = toPlaylistVideos(payload.videos, longVideoSeconds)
 		log(t('extract.found', { count: videos.length, title }))
-		// Sin videos no hay nada que exportar: escribir igual dejaba carpetas
-		// con `total: 0` que parecían una corrida exitosa.
+		// With no videos there's nothing to export: writing anyway left folders
+		// with `total: 0` that looked like a successful run.
 		if (videos.length === 0) throw new Error(t('errors.emptyPlaylist'))
 
-		// Tracklists de candidatos (álbumes/mixes), solo si está habilitado.
+		// Candidates' tracklists (albums/mixes), only if enabled.
 		const candidates = expandAlbums ? videos.filter((v) => v.isCandidate) : []
 		const tracklists = new Map<string, Track[]>()
 		if (candidates.length > 0) {
 			log(t('extract.candidates', { count: candidates.length }))
 			for (const v of candidates) {
-				// Un video que falla no voltea la corrida entera: se avisa y se sigue.
-				// La fuente tira el error; decidir que no es fatal es del orquestador.
+				// A failing video doesn't take down the whole run: warn and move on.
+				// The source throws the error; deciding it isn't fatal is the
+				// orchestrator's call.
 				let tracks: Track[] = []
 				try {
 					tracks = parseTracklist(await source.readDescription(v.videoId))
@@ -793,12 +795,12 @@ export async function runExtraction(
 				} else {
 					log(t('extract.noTracklist', { title }))
 				}
-				await sleep(POLITE_SLEEP_MS) // ser educado con el servidor
+				await sleep(POLITE_SLEEP_MS) // be polite to the server
 			}
 		}
 
-		// Dedupe antes de filtrar (más barato), y el orden al final para que
-		// la renumeración de `position` refleje lo que realmente se exporta.
+		// Dedupe before filtering (cheaper), and the order last so that the
+		// `position` renumbering reflects what actually gets exported.
 		let songs = buildSongRows(videos, tracklists)
 		if (dedupe) songs = dedupeSongs(songs)
 		songs = applySongFilters(songs, {
@@ -808,8 +810,8 @@ export async function runExtraction(
 		})
 		songs = applySongOrder(songs, songOrder)
 		const stamp = dayjs().format('YYYY-MM-DD_HH-mm-ss')
-		// Si el título es genérico (p. ej. "Videos"), el canal alcanza para
-		// reconocer la carpeta; si no, se antepone el canal al título.
+		// If the title is generic (e.g. "Videos"), the channel is enough to
+		// recognize the folder; otherwise the channel is prepended to the title.
 		const genericTitle = GENERIC_PLAYLIST_TITLES.test(title.trim())
 		const playListName = genericTitle ? channel : `${channel}-${title}`
 		const outDir = uniqueOutDir(
@@ -835,7 +837,7 @@ export async function runExtraction(
 	}
 }
 
-// Exporta funciones puras para pruebas.
+// Exports the pure functions for tests.
 export {
 	applySongFilters,
 	applySongOrder,

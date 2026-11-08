@@ -20,24 +20,23 @@ await page.goto(url, {
 	timeout: PLAYLIST_NAV_TIMEOUT_MS,
 })
 await sleep(4000)
-// Scrollea un poco para forzar la carga perezosa de más secciones/ítems,
-// igual que hace scrapePlaylist antes de leer el DOM.
+// Scrolls a bit to force the lazy loading of more sections/items,
+// the same as the scraper does before reading the DOM.
 await page.mouse.wheel(0, 2000)
 await sleep(2000)
 
-// Los selectores llegan por argumento desde types.ts: si este script tuviera
-// su propia copia, podría quedar mirando un DOM que scrapePlaylist ya no usa,
-// que es exactamente lo contrario de para lo que existe.
+// The selectors come in as an argument from types.ts: if this script had its
+// own copy, it could end up looking at a DOM the scraper no longer uses, which
+// is exactly the opposite of what it exists for.
 const info = await page.evaluate(
 	({ itemIndex, sel, channelHref }) => {
-		// YouTube sirve al menos dos variantes de UI para la misma playlist:
-		// - "lockup" (nueva): yt-item-section-renderer > yt-lockup-view-model
-		// - Polymer (vieja): ytd-item-section-renderer > ytd-playlist-video-list-renderer > ytd-playlist-video-renderer
-		// En la variante vieja, las sugerencias ("videos para agregar") pueden
-		// vivir DENTRO del mismo ytd-item-section-renderer que la playlist real,
-		// como hermanas de ytd-playlist-video-list-renderer — por eso, si existe
-		// ese list-renderer, hay que escopar ahí en vez de quedarse con la
-		// sección completa.
+		// YouTube serves at least two UI variants for the same playlist:
+		// - "lockup" (new): yt-item-section-renderer > yt-lockup-view-model
+		// - Polymer (old): ytd-item-section-renderer > ytd-playlist-video-list-renderer > ytd-playlist-video-renderer
+		// In the old variant, the suggestions ("videos to add") can live INSIDE
+		// the same ytd-item-section-renderer as the real playlist, as siblings of
+		// ytd-playlist-video-list-renderer — so if that list-renderer exists, the
+		// scope has to be it instead of the whole section.
 		const listRenderer = document.querySelector(sel.listRenderer)
 		const section = sel.sectionsByPreference.reduce<Element | null>(
 			(found, s) => found ?? document.querySelector(s),
@@ -76,8 +75,8 @@ const info = await page.evaluate(
 				: null
 		}
 
-		// Anchors de canal: puede haber 0 (colaboración, sin links), 1 (caso
-		// normal) o más de uno. Ya no asumimos "el primero".
+		// Channel anchors: there can be 0 (collaboration, no links), 1 (the normal
+		// case) or more than one. We no longer assume "the first one".
 		const channelHrefRe = new RegExp(channelHref)
 		const chanAnchors = Array.from(item?.querySelectorAll('a') || [])
 			.filter((a) =>
@@ -88,9 +87,9 @@ const info = await page.evaluate(
 				text: (a as HTMLAnchorElement).innerText.trim(),
 			}))
 
-		// Fallback para videos de "colaboración": sin anchors de canal, YouTube
-		// pone los nombres como texto plano en la primera fila de metadata
-		// (ej. "Alan Walker and Au/Ra") junto a un avatar-stack.
+		// Fallback for "collaboration" videos: with no channel anchors, YouTube
+		// puts the names as plain text in the first metadata row
+		// (e.g. "Alan Walker and Au/Ra") next to an avatar-stack.
 		const metaRows = Array.from(item?.querySelectorAll(sel.metadataRow) || [])
 		const avatarStack = item?.querySelector('yt-avatar-stack-view-model')
 

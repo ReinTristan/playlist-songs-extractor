@@ -134,7 +134,7 @@ describe('parseTitle', () => {
 		assert.equal(r.songTitle, 'Push')
 	})
 	it('Evaluacion completa de la separacion con todos los casos al mismo tiempo y con mas de dos artistas', () => {
-		//La idea es poner el caso mas complejo para
+		// The idea is to throw in the most complex case possible
 		const megaCollabTitle =
 			'Alan Walker & Au/Ra and Unlike Pluto with Tyler the creator, Aero Chord x Martin Ingrosso vs ODESZA w/ Aviva vs. Ava Max, Kim Petras × Neoni X Dusqk * S3RL with Vau boy ft Lionfield - Best song collab ever'
 
@@ -196,8 +196,8 @@ describe('parseTitle', () => {
 	})
 
 	it('separa por cualquier variante unicode de guion', () => {
-		// U+002D, U+2010, U+2011, U+2012, U+2013, U+2014, U+2212: visualmente
-		// iguales, y las fuentes/copy-paste traen cualquiera de ellas.
+		// U+002D, U+2010, U+2011, U+2012, U+2013, U+2014, U+2212: visually
+		// identical, and fonts/copy-pastes bring any of them.
 		for (const dash of ['-', '‐', '‑', '‒', '–', '—', '−']) {
 			const r = parseTitle(`Artist ${dash} Song`)
 			assert.deepEqual(

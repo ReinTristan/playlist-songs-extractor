@@ -13,9 +13,9 @@ import {
 } from '../src/utils.ts'
 
 /**
- * El CLI se spawnea con idioma fijo y un conf aislado: así las aserciones no
- * dependen ni del locale del sistema ni de la preferencia guardada del usuario
- * que corre los tests.
+ * The CLI is spawned with a fixed language and an isolated conf: that way the
+ * assertions depend neither on the system locale nor on the saved preference
+ * of whoever runs the tests.
  */
 function runCli(args: string[]) {
 	return spawnSync('node', ['src/index.ts', ...args], {
@@ -124,7 +124,7 @@ describe('parseFlags', () => {
 	})
 
 	it('sólo los flags declarados con valor consumen el argumento siguiente', () => {
-		// Sin la lista, "--dedupe" se comería la URL.
+		// Without the list, "--dedupe" would swallow the URL.
 		const { flags, rest } = parseFlags(['--dedupe', 'URL'], ['lang'])
 		assert.equal(flags.get('dedupe'), true)
 		assert.deepEqual(rest, ['URL'])
@@ -217,10 +217,10 @@ describe('escapeRegex', () => {
 		assert.equal(escapeRegex(''), '')
 	})
 
-	// El caso real de uso: los géneros de GENRE_KEYWORDS se interpolan dentro de
-	// `\b...\b` para detectarlos en un título. Sin escapar, "d&b" o "lo-fi" no
-	// rompen, pero un futuro género con paréntesis o "+" sí haría explotar la
-	// construcción de la RegExp.
+	// The real use case: GENRE_KEYWORDS genres are interpolated inside
+	// `\b...\b` to detect them in a title. Unescaped, "d&b" or "lo-fi" don't
+	// break, but a future genre with parentheses or "+" would blow up building
+	// the RegExp.
 	it('interpolado en una RegExp matchea el literal', () => {
 		for (const literal of [
 			'd&b',

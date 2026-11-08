@@ -48,7 +48,7 @@ describe('dedupeSongs', () => {
 	})
 
 	it('no colapsa las pistas expandidas de un mismo álbum', () => {
-		// Comparten videoId; lo que las distingue es el startTimestamp.
+		// They share a videoId; what tells them apart is the startTimestamp.
 		const songs = [
 			makeSong({ position: '1.1', videoId: 'mix', startTimestamp: '0:00' }),
 			makeSong({ position: '1.2', videoId: 'mix', startTimestamp: '3:20' }),

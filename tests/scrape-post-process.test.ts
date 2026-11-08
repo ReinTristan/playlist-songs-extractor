@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import { toPlaylistVideos } from '../src/extractor.ts'
 import type { RawPlaylistVideo } from '../src/types.ts'
 
-/** Un video crudo con valores por defecto razonables, para no repetir 9 campos. */
+/** A raw video with sensible defaults, so the 9 fields aren't repeated. */
 function rawVideo(over: Partial<RawPlaylistVideo> = {}): RawPlaylistVideo {
 	return {
 		index: 1,
@@ -37,7 +37,7 @@ describe('toPlaylistVideos', () => {
 	})
 
 	it('un video largo sin keyword es candidato pero sigue siendo single', () => {
-		// Un extended de 25 min se abre para buscar tracklist, pero no es álbum ni mix.
+		// A 25-min extended track is opened to look for a tracklist, but it's neither an album nor a mix.
 		const [video] = toPlaylistVideos(
 			[rawVideo({ rawTitle: 'Artist - Song (Extended)', duration: '25:00' })],
 			1080,
@@ -47,8 +47,8 @@ describe('toPlaylistVideos', () => {
 	})
 
 	it('un video no disponible queda como unknown, sin clasificar', () => {
-		// Sin título real no hay nada que clasificar: aplicar las heurísticas sobre
-		// "[Private video]" sólo produce etiquetas inventadas.
+		// With no real title there's nothing to classify: running the heuristics
+		// over "[Private video]" only produces made-up labels.
 		const [video] = toPlaylistVideos(
 			[
 				rawVideo({

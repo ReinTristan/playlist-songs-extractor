@@ -1,14 +1,14 @@
 /**
- * Punto de entrada del extractor de playlists de YouTube.
+ * Entry point of the YouTube playlist extractor.
  *
- * Sin argumentos abre el menú interactivo (requiere terminal TTY). Con una URL
- * como primer argumento corre en modo rápido no interactivo:
+ * With no arguments it opens the interactive menu (needs a TTY). With a URL as
+ * the first argument it runs in non-interactive quick mode:
  *   node src/index.ts "https://www.youtube.com/playlist?list=..." [maxVideos]
  *   bun  src/index.ts "https://www.youtube.com/playlist?list=..." [maxVideos]
  *
- * El idioma se resuelve antes de imprimir nada: `--lang=<code>` (o `--locale`)
- * y `PLAYLIST_LANG` sirven en ambos modos; en el interactivo, la primera vez se
- * pregunta y la elección queda guardada con `conf`.
+ * The language is resolved before printing anything: `--lang=<code>` (or
+ * `--locale`) and `PLAYLIST_LANG` work in both modes; in interactive mode it's
+ * asked the first time and the choice is saved with `conf`.
  */
 
 import { fileURLToPath } from 'node:url'
@@ -38,12 +38,12 @@ import {
 } from './utils.ts'
 
 // ---------------------------------------------------------------------------
-// Modo rápido por argumentos (compatibilidad hacia atrás)
+// Quick mode via arguments (backwards compatibility)
 // ---------------------------------------------------------------------------
 
 /**
- * Flags que aceptan `--flag valor` además de `--flag=valor`. Los booleanos
- * quedan afuera a propósito: si no, `--dedupe "URL"` se comería la URL.
+ * Flags that accept `--flag value` besides `--flag=value`. Booleans are left out
+ * on purpose: otherwise `--dedupe "URL"` would swallow the URL.
  */
 const VALUE_FLAGS = [
 	'lang',
@@ -56,13 +56,13 @@ const VALUE_FLAGS = [
 	'genres',
 ]
 
-/** Flags booleanos, sin valor. */
+/** Boolean flags, without a value. */
 const BOOLEAN_FLAGS = ['no-expand', 'expand', 'dedupe', 'exclude-unavailable']
 
-/** Error de parseo de un flag, listo para imprimir. */
+/** A flag's parse error, ready to print. */
 type FlagError = { message: string }
 
-/** Parte "a,b,c" y valida cada valor contra la lista permitida. */
+/** Splits "a,b,c" and validates each value against the allowed list. */
 function parseList<T extends string>(
 	raw: string,
 	allowed: readonly T[],
@@ -86,15 +86,15 @@ function parseList<T extends string>(
 }
 
 /**
- * Aplica los flags sobre una config ya armada. Devuelve el primer error
- * encontrado, para cortar antes de abrir el navegador.
+ * Applies the flags over an already built config. Returns the first error
+ * found, to stop before opening the browser.
  */
 function applyFlags(
 	config: ExtractConfig,
 	flags: Map<string, string | true>,
 ): FlagError | null {
 	for (const [name, value] of flags) {
-		// `--lang`/`--locale` ya los consumió parseLangFlag antes de i18n.
+		// `--lang`/`--locale` were already consumed by parseLangFlag before i18n.
 		if (name === 'lang' || name === 'locale') continue
 		if (!VALUE_FLAGS.includes(name) && !BOOLEAN_FLAGS.includes(name)) {
 			return { message: t('errors.unknownFlag', { flag: `--${name}` }) }
@@ -173,9 +173,9 @@ function applyFlags(
 }
 
 /**
- * Arma la config del modo rápido. Omitir el límite significa "todos"; si se
- * pasa y no es un entero ≥ 1, devuelve el valor ofensivo para que main() corte
- * con un error en vez de procesar la playlist entera por un typo.
+ * Builds the quick-mode config. Leaving out the limit means "all"; if it's
+ * given and isn't an integer ≥ 1, returns the offending value so main() stops
+ * with an error instead of processing the whole playlist because of a typo.
  */
 function buildQuickConfig(
 	positional: string[],
@@ -198,8 +198,8 @@ function buildQuickConfig(
 }
 
 async function main(): Promise<void> {
-	// El idioma se resuelve aparte y primero: los errores de los demás flags ya
-	// tienen que salir traducidos.
+	// The language is resolved separately and first: the errors of the other
+	// flags already have to come out translated.
 	const { lang } = parseLangFlag(process.argv.slice(2))
 	const { flags, rest } = parseFlags(process.argv.slice(2), VALUE_FLAGS)
 	const { locale, invalid } = resolveLocale({
@@ -208,7 +208,7 @@ async function main(): Promise<void> {
 		saved: getSavedLocale(),
 		system: osLocale(),
 	})
-	// Antes de imprimir cualquier texto, incluidos los errores de abajo.
+	// Before printing any text, including the errors below.
 	await initI18n(locale)
 
 	if (invalid) {
@@ -237,24 +237,24 @@ async function main(): Promise<void> {
 		try {
 			await runExtraction(result.config)
 		} catch (err) {
-			// Una playlist inexistente/privada es un final esperable, no un crash:
-			// mensaje claro y exit 1, sin el stack de `errors.fatal`.
+			// A nonexistent/private playlist is an expected ending, not a crash:
+			// a clear message and exit 1, without the `errors.fatal` stack.
 			console.error(t('extract.failed', { message: (err as Error).message }))
 			process.exitCode = 1
 		}
 		return
 	}
 
-	// Se piden ambos extremos: con stdout a una terminal pero stdin redirigido
-	// (`node src/index.ts < archivo`), @clack/prompts no tiene de dónde leer.
+	// Both ends are required: with stdout on a terminal but stdin redirected
+	// (`node src/index.ts < file`), @clack/prompts has nothing to read from.
 	if (!process.stdout.isTTY || !process.stdin.isTTY) {
 		console.error(t('errors.usage'))
 		process.exitCode = 1
 		return
 	}
 
-	// Primer arranque: se pregunta por el idioma y la respuesta se persiste.
-	// Un `--lang` puntual no se guarda: es un override de una sola corrida.
+	// First run: the language is asked and the answer is persisted.
+	// A one-off `--lang` isn't saved: it's a single-run override.
 	if (!hasSavedLocale()) {
 		await changeLocale(await promptFirstRunLocale(locale))
 	}

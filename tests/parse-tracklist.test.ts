@@ -30,7 +30,7 @@ Sígueme en redes`
 	})
 
 	it('limpia un timestamp residual al inicio del título', () => {
-		// Rango "0:00 - 5:36": se quita el primero como m[0] y queda el segundo pegado.
+		// "0:00 - 5:36" range: the first is removed as m[0] and the second is left stuck on.
 		const desc = `Tracklist
 0:00 - 05:36 John Dish ft. Naika - You & Me
 05:36 - 31:23 Au5 ft. Danyka Nadeau - Crossroad
@@ -42,7 +42,7 @@ Sígueme en redes`
 	})
 
 	it('limpia el timestamp inicial en un tracklist numerado ', () => {
-		// Sólo una línea trae timestamp → estrategia A queda con <3 y cae a la B.
+		// Only one line has a timestamp → strategy A ends up with <3 and falls back to B.
 		const desc = `Album
 1. 05:36 Alpha - One
 2. Beta - Two

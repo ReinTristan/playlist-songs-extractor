@@ -1,15 +1,15 @@
 /**
- * Preferencias persistentes del usuario (idioma, última configuración usada y
- * URLs recientes).
+ * The user's persisted preferences (language, last-used config and recent
+ * URLs).
  *
- * Envuelve `conf` para que el resto del código no dependa de su API. El store
- * se crea de forma perezosa: importar este módulo no debe tocar el disco (a
- * `src/index.ts` lo spawnean los tests). `PLAYLIST_CONFIG_DIR` permite apuntar
- * el store a un directorio temporal en las pruebas.
+ * Wraps `conf` so the rest of the code doesn't depend on its API. The store is
+ * created lazily: importing this module must not touch the disk (the tests
+ * spawn `src/index.ts`). `PLAYLIST_CONFIG_DIR` points the store at a temporary
+ * directory in tests.
  *
- * Todo lo que se guarda pasa por `sanitizeConfig` al leerse: un archivo escrito
- * por una versión anterior puede traer columnas o formatos que ya no existen, y
- * usarlos tal cual rompería la salida en silencio.
+ * Everything stored goes through `sanitizeConfig` when read back: a file
+ * written by an older version may carry columns or formats that no longer
+ * exist, and using them as is would silently break the output.
  */
 
 import Conf from 'conf'
@@ -25,13 +25,13 @@ import {
 	type VideoType,
 } from './types.ts'
 
-/** Cuántas URLs de playlist se recuerdan para ofrecerlas en el menú. */
+/** How many playlist URLs are remembered to offer them in the menu. */
 const MAX_RECENT_URLS = 10
 
 /**
- * Config tal como se serializa a JSON: `formats` viaja como array porque un
- * `Set` no sobrevive al round-trip, y `fullUrl`/`onProgress` no se guardan (uno
- * vive en `recentUrls`, el otro es una función).
+ * Config as serialized to JSON: `formats` travels as an array because a `Set`
+ * doesn't survive the round-trip, and `fullUrl`/`onProgress` aren't stored (one
+ * lives in `recentUrls`, the other is a function).
  */
 export interface PersistedConfig {
 	allVideos: boolean
@@ -63,7 +63,7 @@ function getStore(): Conf<StoreShape> {
 	return store
 }
 
-/** Locale guardado en una corrida anterior, o `undefined` si nunca se eligió. */
+/** Locale saved by a previous run, or `undefined` if one was never chosen. */
 export function getSavedLocale(): string | undefined {
 	return getStore().get('locale')
 }
@@ -72,26 +72,26 @@ export function setSavedLocale(locale: string): void {
 	getStore().set('locale', locale)
 }
 
-/** `false` la primera vez que se abre el CLI: dispara el prompt de idioma. */
+/** `false` the first time the CLI is opened: triggers the language prompt. */
 export function hasSavedLocale(): boolean {
 	return getStore().has('locale')
 }
 
-/** Ruta del archivo de configuración (para mostrarla en el CLI). */
+/** Path of the config file (to show it in the CLI). */
 export function configPath(): string {
 	return getStore().path
 }
 
 // ---------------------------------------------------------------------------
-// Última configuración usada
+// Last-used config
 // ---------------------------------------------------------------------------
 
 const isValidArray = <T>(value: unknown, allowed: readonly T[]): value is T[] =>
 	Array.isArray(value) && value.every((v) => allowed.includes(v as T))
 
 /**
- * Descarta del objeto guardado todo lo que no reconozca la versión actual y
- * devuelve sólo las claves válidas, para mergearlas sobre los defaults.
+ * Drops from the stored object everything the current version doesn't
+ * recognize and returns only the valid keys, to be merged over the defaults.
  */
 export function sanitizeConfig(
 	raw: Partial<PersistedConfig> | undefined,
@@ -115,8 +115,8 @@ export function sanitizeConfig(
 	if (raw.songOrder && SONG_ORDERS.includes(raw.songOrder))
 		out.songOrder = raw.songOrder
 
-	// Las listas se filtran en vez de descartarse enteras: si desapareció una
-	// sola columna, el resto del orden elegido sigue siendo válido.
+	// Lists are filtered instead of dropped whole: if a single column
+	// disappeared, the rest of the chosen order is still valid.
 	if (Array.isArray(raw.formats)) {
 		const formats = raw.formats.filter((f): f is Format =>
 			FORMATS.includes(f as Format),
@@ -140,12 +140,12 @@ export function sanitizeConfig(
 	return out
 }
 
-/** Config de la última corrida, ya saneada. Vacío si nunca se guardó nada. */
+/** Config of the last run, already sanitized. Empty if nothing was ever saved. */
 export function getSavedConfig(): Partial<PersistedConfig> {
 	return sanitizeConfig(getStore().get('lastConfig'))
 }
 
-/** Guarda la config de una extracción (sin la URL, que va a `recentUrls`). */
+/** Saves an extraction's config (without the URL, which goes to `recentUrls`). */
 export function setSavedConfig(config: ExtractConfig): void {
 	const persisted: PersistedConfig = {
 		allVideos: config.allVideos,
@@ -164,7 +164,7 @@ export function setSavedConfig(config: ExtractConfig): void {
 }
 
 // ---------------------------------------------------------------------------
-// URLs recientes
+// Recent URLs
 // ---------------------------------------------------------------------------
 
 export function getRecentUrls(): string[] {
@@ -175,7 +175,7 @@ export function getRecentUrls(): string[] {
 		.slice(0, MAX_RECENT_URLS)
 }
 
-/** Agrega una URL al historial: más reciente primero, sin repetidos. */
+/** Adds a URL to the history: most recent first, no duplicates. */
 export function pushRecentUrl(url: string): void {
 	const clean = url.trim()
 	if (!clean) return

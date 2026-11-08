@@ -6,8 +6,8 @@ import {
 } from '../../src/types.ts'
 
 /**
- * `ExtractConfig` completa para los tests, con los mismos defaults que
- * `defaultConfig()` de `cli.ts` pero sin leer el store ni pedir prompts.
+ * A complete `ExtractConfig` for tests, with the same defaults as `cli.ts`'s
+ * `defaultConfig()` but without reading the store or prompting.
  */
 export default function makeConfig(
 	overrides: Partial<ExtractConfig>,
