@@ -31,7 +31,6 @@ the same idea from being re-evaluated from scratch a year later.
 
 | Spec | Status |
 | --- | --- |
-| [Menu restructure: a short main menu, everything else in submenus](menu-restructure.md) | approved (v3.3) |
 | [Extraction presets](extraction-presets.md) | draft (v3.4) |
 | [CLI essentials: help, version, output dir, preferences, missing browser](cli-essentials.md) | draft (v3.5) |
 | [Extraction history](extraction-history.md) | draft (v3.6) |
@@ -41,5 +40,6 @@ the same idea from being re-evaluated from scratch a year later.
 | [Transpile to JavaScript and make it an installable Node package](node-package.md) | draft (v3.10) |
 | [Standalone binary, with more than one way to build it](standalone-binary.md) | draft (v3.11) |
 | [YouTube Data API v3 as a second source](youtube-api-source.md) | draft (v4) |
+| [Menu restructure: a short main menu, everything else in submenus](menu-restructure.md) | done (v3.3.0) |
 | [Split the source layer out of the extractor](source-layer-split.md) | done (v3.2.0) |
 | [Extended mode: open every video for more data](extended-mode.md) | discarded |

@@ -38,29 +38,39 @@ The very first time, it asks whether the detected system language is the one you
 lets you pick another. The answer is saved, so it is asked only once (see
 [Language](#language)).
 
-The menu lets you configure each option and then choose **▶ Extract**. After a run it
-returns to the menu **keeping your settings**, so you can process several playlists in a
-row by just changing the URL. Configurable options:
+The main menu is short: **▶ Extract** (where the cursor starts, showing the current URL),
+**Extraction options**, **Settings** and **Quit**. If no URL is set, Extract asks for one
+right there, offering your recent playlists. After a run it returns to the menu **keeping
+your settings**, so you can process several playlists in a row. Pressing Esc or Ctrl+C
+inside a submenu goes back one level; on the main menu it quits.
 
-- **Playlist URL** — full URL or a bare list ID.
-- **Video limit** — either _All_, or a number you type in (an integer ≥ 1).
-- **Output formats** — any combination of JSON, CSV, and Excel (XLSX).
-- **Expand albums/mixes** — toggle expanding long albums/mixes into individual songs.
-- **Columns to save** — pick exactly which columns/fields are written to the files.
-- **Column order** — reorder the selected columns (moves them up/down); affects the column
-  order in CSV/XLSX and the key order in JSON.
-- **Extra options** — experimental toggles, disabled by default:
-  - _Song order_ — keep the original YouTube order, reverse it, sort alphabetically by song
+**Extraction options** holds everything that changes what ends up in the result, in one
+list split into groups:
+
+- _Source_
+  - **Playlist URL** — full URL or a bare list ID.
+  - **Video limit** — either _All_, or a number you type in (an integer ≥ 1).
+- _Output_
+  - **Output formats** — any combination of JSON, CSV, and Excel (XLSX).
+  - **Columns to save** — pick exactly which columns/fields are written to the files.
+  - **Column order** — reorder the selected columns (moves them up/down); affects the column
+    order in CSV/XLSX and the key order in JSON.
+- _Songs_
+  - **Expand albums/mixes** — toggle expanding long albums/mixes into individual songs.
+  - **Album/mix threshold** — from how many minutes a video is treated as an album/mix and
+    opened to read its tracklist (18 by default).
+  - **Song order** — keep the original YouTube order, reverse it, sort alphabetically by song
     title (A→Z or Z→A), or shuffle randomly. Whenever the order changes, `position` is
     renumbered sequentially (1, 2, 3…) instead of keeping the original playlist position.
-  - _Exclude unavailable_ — drop private/deleted videos from the output instead of
+  - **Exclude unavailable** — drop private/deleted videos from the output instead of
     including them with empty fields.
-  - _Remove duplicates_ — drop songs that repeat within the playlist. Expanded album/mix
+  - **Remove duplicates** — drop songs that repeat within the playlist. Expanded album/mix
     tracks are never collapsed together: they share a source video but differ by timestamp.
-  - _Album/mix threshold_ — from how many minutes a video is treated as an album/mix and
-    opened to read its tracklist (18 by default).
-  - _Filter by video type_ — keep only singles, albums, mixes, or unknown.
-  - _Filter by genre_ — comma-separated list; a song is kept if it matches any of them.
+  - **Filter by video type** — keep only singles, albums, mixes, or unknown.
+  - **Filter by genre** — comma-separated list; a song is kept if it matches any of them.
+
+**Settings** holds how the program behaves, whichever playlist you extract:
+
 - **Language** — switch language on the spot; the menu re-renders in it and the choice is
   saved for the next run.
 
