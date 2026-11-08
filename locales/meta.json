@@ -6,7 +6,9 @@
 			"nativeName": "English",
 			"firstRun": {
 				"detected": "Detected language: English. Use it?",
-				"choose": "Choose a language"
+				"choose": "Choose a language",
+				"yes": "Yes",
+				"no": "No"
 			}
 		},
 		{
@@ -14,7 +16,9 @@
 			"nativeName": "Español",
 			"firstRun": {
 				"detected": "Idioma detectado: Español. ¿Usarlo?",
-				"choose": "Elegí un idioma"
+				"choose": "Elige un idioma",
+				"yes": "Sí",
+				"no": "No"
 			}
 		},
 		{
@@ -22,7 +26,9 @@
 			"nativeName": "Français",
 			"firstRun": {
 				"detected": "Langue détectée : Français. L'utiliser ?",
-				"choose": "Choisissez une langue"
+				"choose": "Choisissez une langue",
+				"yes": "Oui",
+				"no": "Non"
 			}
 		}
 	]

@@ -1,33 +1,35 @@
 /**
- * Internacionalización del CLI y de los archivos exportados.
+ * Internationalization of the CLI and of the exported files.
  *
- * `locales/meta.json` es la única fuente de verdad de qué idiomas existen: se
- * lee síncrono (es chico y local) y alcanza para armar el prompt de primer
- * arranque sin cargar todavía ningún `translation.json`. Los namespaces de
- * traducción los carga i18next-fs-backend bajo demanda, así que solo se leen
- * del disco el idioma elegido y el fallback.
+ * `locales/meta.json` is the single source of truth for which languages exist:
+ * it's read synchronously (it's small and local) and is enough to build the
+ * first-run prompt without loading any `translation.json` yet. The translation
+ * namespaces are loaded on demand by i18next-fs-backend, so only the chosen
+ * language and the fallback are read from disk.
  *
- * Invariante del proyecto: acá vive el texto *visible*. Las keys de `Song` /
- * `COLUMNS` y los valores de datos (`videoType`, `availability`, `mixType`)
- * quedan canónicos en todos los idiomas — la lógica no cambia con el locale.
+ * Project invariant: *visible* text lives here. The `Song` / `COLUMNS` keys and
+ * the data values (`videoType`, `availability`, `mixType`) stay canonical in
+ * every language — the logic doesn't change with the locale.
  */
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { MULTISELECT_INSTRUCTIONS, SELECT_INSTRUCTIONS } from '@clack/prompts'
 import i18next from 'i18next'
 import Backend from 'i18next-fs-backend'
+import pc from 'picocolors'
 import { setSavedLocale } from './config.ts'
 import type { Format, Song, SongOrder, VideoType } from './types.ts'
 
 // ---------------------------------------------------------------------------
-// Catálogo de idiomas (locales/meta.json)
+// Language catalog (locales/meta.json)
 // ---------------------------------------------------------------------------
 
 export interface LanguageMeta {
 	code: string
 	nativeName: string
-	/** Textos del prompt de primer arranque, en ese mismo idioma. */
-	firstRun: { detected: string; choose: string }
+	/** The first-run prompt's strings, in that same language. */
+	firstRun: { detected: string; choose: string; yes: string; no: string }
 }
 
 export interface LocaleMeta {
@@ -54,13 +56,13 @@ export function languageMeta(code: string): LanguageMeta | undefined {
 	return loadMeta().languages.find((l) => l.code === code)
 }
 
-/** Nombre nativo del idioma (para hints del menú); cae al código si no existe. */
+/** The language's native name (for menu hints); falls back to the code if missing. */
 export function languageName(code: string): string {
 	return languageMeta(code)?.nativeName ?? code
 }
 
 // ---------------------------------------------------------------------------
-// Resolución del locale
+// Locale resolution
 // ---------------------------------------------------------------------------
 
 /** "es-AR"/"es_AR" → "es". */
@@ -78,14 +80,14 @@ export interface LocaleSources {
 }
 
 /**
- * Precedencia: `--lang` > `PLAYLIST_LANG` > conf > idioma del sistema >
- * fallback. Un idioma pedido explícitamente (cli/env) pero no soportado se
- * devuelve en `invalid` para que el llamador corte con un error; uno del
- * sistema o guardado que ya no exista cae al fallback en silencio.
+ * Precedence: `--lang` > `PLAYLIST_LANG` > conf > system language > fallback.
+ * A language asked for explicitly (cli/env) but not supported is returned in
+ * `invalid` so the caller stops with an error; a system or saved one that no
+ * longer exists silently falls back.
  *
- * Aun cuando hay `invalid`, se sigue resolviendo el mejor locale disponible:
- * el mensaje de error se muestra en el idioma que el usuario sí entiende, no
- * en el fallback.
+ * Even when there's an `invalid`, the best available locale is still resolved:
+ * the error message is shown in the language the user does understand, not in
+ * the fallback.
  */
 export function resolveLocale(sources: LocaleSources): {
 	locale: string
@@ -94,9 +96,9 @@ export function resolveLocale(sources: LocaleSources): {
 	const supported = supportedLocales()
 	const { fallbackLng } = loadMeta()
 	let invalid: string | undefined
-	// `invalid` viaja con el resultado en vez de cortar acá: un `--lang=xx`
-	// inválido tiene que reportarse aunque otra fuente resuelva un idioma
-	// válido para mostrar el mensaje.
+	// `invalid` travels with the result instead of stopping here: an invalid
+	// `--lang=xx` has to be reported even if another source resolves a valid
+	// language to show the message in.
 	const result = (locale: string) =>
 		invalid === undefined ? { locale } : { locale, invalid }
 
@@ -119,9 +121,30 @@ export function resolveLocale(sources: LocaleSources): {
 // i18next
 // ---------------------------------------------------------------------------
 
+/**
+ * Translates clack's help footers ("↑/↓ to navigate • Enter: confirm"). Clack
+ * has no option for that, but it exports the arrays it reads on every render:
+ * they're rewritten **in place** (not reassigned, because clack keeps the
+ * reference) every time the language changes.
+ */
+export function localizeClack(): void {
+	const navigate = t('clack.navigate', { keys: pc.dim('↑/↓') })
+	const confirm = t('clack.confirm', { key: pc.dim(t('clack.enterKey')) })
+	const select = t('clack.select', { key: pc.dim(t('clack.spaceKey')) })
+	SELECT_INSTRUCTIONS.splice(0, SELECT_INSTRUCTIONS.length, navigate, confirm)
+	MULTISELECT_INSTRUCTIONS.splice(
+		0,
+		MULTISELECT_INSTRUCTIONS.length,
+		navigate,
+		select,
+		confirm,
+	)
+}
+
 export async function initI18n(locale: string): Promise<void> {
 	if (i18next.isInitialized) {
 		await i18next.changeLanguage(locale)
+		localizeClack()
 		return
 	}
 	const { fallbackLng } = loadMeta()
@@ -134,14 +157,16 @@ export async function initI18n(locale: string): Promise<void> {
 		backend: {
 			loadPath: path.join(LOCALES_DIR, '{{lng}}', 'translation.json'),
 		},
-		// La salida va a la terminal y a CSV/XLSX, no a HTML.
+		// The output goes to the terminal and to CSV/XLSX, not to HTML.
 		interpolation: { escapeValue: false },
 	})
+	localizeClack()
 }
 
-/** Cambia el idioma en caliente y lo persiste como preferencia del usuario. */
+/** Switches the language on the fly and persists it as the user's preference. */
 export async function changeLocale(code: string): Promise<void> {
 	await i18next.changeLanguage(code)
+	localizeClack()
 	setSavedLocale(code)
 }
 
@@ -150,9 +175,9 @@ export function currentLocale(): string {
 }
 
 /**
- * Wrapper fino sobre `i18next.t`: permite importar `t` a nivel de módulo desde
- * `cli.ts`/`extractor.ts` antes de que `initI18n` haya corrido (en ese caso
- * devuelve la key, que es lo que ven los tests unitarios que no inicializan).
+ * Thin wrapper over `i18next.t`: lets `cli.ts`/`extractor.ts` import `t` at
+ * module level before `initI18n` has run (in that case it returns the key,
+ * which is what the unit tests that don't initialize see).
  */
 export function t(key: string, options?: Record<string, unknown>): string {
 	if (!i18next.isInitialized) return key
@@ -160,7 +185,7 @@ export function t(key: string, options?: Record<string, unknown>): string {
 }
 
 // ---------------------------------------------------------------------------
-// Labels de las constantes de dominio (types.ts queda sin texto visible)
+// Labels for the domain constants (types.ts stays free of visible text)
 // ---------------------------------------------------------------------------
 
 export function columnHeader(key: keyof Song): string {
@@ -176,9 +201,9 @@ export function songOrderLabel(value: SongOrder): string {
 }
 
 /**
- * Label del tipo de video. Sólo para la UI del filtro: el valor que va al
- * export sigue siendo la key canónica ('single', 'album', 'mix', 'unknown'),
- * para que dos corridas en idiomas distintos sigan siendo comparables.
+ * The video type's label. Only for the filter UI: the value that goes into the
+ * export is still the canonical key ('single', 'album', 'mix', 'unknown'), so
+ * two runs in different languages stay comparable.
  */
 export function videoTypeLabel(value: VideoType): string {
 	return t(`videoTypes.${value}`)

@@ -5,25 +5,36 @@
 	"menu": {
 		"title": " Playlist Extractor ",
 		"prompt": "Adjust the options, then extract",
+		"extract": "▶ Extract",
+		"extractionOptions": "Extraction options",
+		"history": "History",
+		"settings": "Settings",
+		"quit": "Quit",
+		"bye": "See you!",
+		"groups": {
+			"source": "Source",
+			"output": "Output",
+			"songs": "Songs"
+		},
 		"url": "Playlist URL",
 		"max": "Video limit",
 		"formats": "Output formats",
-		"expand": "Expand albums/mixes",
 		"columns": "Columns to save",
 		"columnOrder": "Column order",
-		"extra": "Extra options",
-		"language": "Language",
-		"extract": "▶ Extract",
-		"quit": "Quit",
-		"bye": "See you!"
+		"expand": "Expand albums/mixes",
+		"longVideo": "Album/mix threshold",
+		"songOrder": "Song order",
+		"excludeUnavailable": "Exclude unavailable",
+		"dedupe": "Remove duplicates",
+		"videoTypeFilter": "Filter by video type",
+		"genreFilter": "Filter by genre",
+		"language": "Language"
 	},
 	"hints": {
 		"unset": "not set",
+		"noUrl": "no URL",
 		"yes": "yes",
 		"no": "no",
-		"none": "none enabled",
-		"excludeUnavailable": "exclude unavailable",
-		"dedupe": "no duplicates",
 		"longVideoMinutes": "≥ {{minutes}} min",
 		"noFilter": "no filter"
 	},
@@ -45,9 +56,8 @@
 		"moveUp": "↑ Move up",
 		"moveDown": "↓ Move down",
 		"cancel": "Cancel",
-		"extra": "Extra options (experimental, disabled by default)",
-		"extraSongOrder": "Song order",
-		"extraExclude": "Exclude unavailable",
+		"extractionOptions": "Extraction options",
+		"settings": "Settings",
 		"back": "← Back to the main menu",
 		"songOrder": "Song order in the output",
 		"excludeUnavailable": "Exclude unavailable songs (private/deleted) from the output?",
@@ -59,10 +69,8 @@
 		"videoTypeFilter": "Keep only these video types",
 		"genreFilter": "Keep only these genres (comma separated, empty = all)",
 		"genreFilterPlaceholder": "dubstep, deep house",
-		"extraDedupe": "Remove duplicates",
-		"extraLongVideo": "Album/mix threshold",
-		"extraVideoTypeFilter": "Filter by video type",
-		"extraGenreFilter": "Filter by genre"
+		"yes": "Yes",
+		"no": "No"
 	},
 	"columns": {
 		"position": "Position",
@@ -95,7 +103,6 @@
 		"shuffle": "Shuffled"
 	},
 	"extract": {
-		"needUrl": "Set the playlist URL first.",
 		"starting": "Extracting: {{url}}",
 		"failed": "Extraction failed: {{message}}",
 		"invalidOption": "Pick a valid option",
@@ -132,5 +139,12 @@
 		"album": "Album",
 		"mix": "Mix",
 		"unknown": "Unknown"
+	},
+	"clack": {
+		"navigate": "{{keys}} to navigate",
+		"select": "{{key}} select",
+		"confirm": "{{key}} confirm",
+		"enterKey": "Enter:",
+		"spaceKey": "Space:"
 	}
 }

@@ -2,8 +2,20 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, it } from 'node:test'
-import { loadMeta, resolveLocale, supportedLocales } from '../src/i18n.ts'
-import { COLUMNS, FORMATS, SONG_ORDERS } from '../src/types.ts'
+import { stripVTControlCharacters } from 'node:util'
+import { MULTISELECT_INSTRUCTIONS, SELECT_INSTRUCTIONS } from '@clack/prompts'
+import {
+	initI18n,
+	loadMeta,
+	resolveLocale,
+	supportedLocales,
+} from '../src/i18n.ts'
+import {
+	COLUMNS,
+	EXTRACTION_GROUPS,
+	FORMATS,
+	SONG_ORDERS,
+} from '../src/types.ts'
 
 const LOCALES_DIR = path.join(import.meta.dirname, '..', 'locales')
 
@@ -15,7 +27,7 @@ function readTranslation(lng: string): Nested {
 	) as Nested
 }
 
-/** "menu.url", "extract.found_one", … para poder comparar sets entre idiomas. */
+/** "menu.url", "extract.found_one", … so the sets can be compared across languages. */
 function flattenKeys(obj: Nested, prefix = ''): string[] {
 	return Object.entries(obj).flatMap(([k, v]) => {
 		const full = prefix ? `${prefix}.${k}` : k
@@ -50,6 +62,13 @@ describe('locales: catálogo y carpetas', () => {
 				lang.firstRun.choose.length > 0,
 				`${lang.code}: firstRun.choose vacío`,
 			)
+			// Clack ships "Yes"/"No" in English: the first prompt needs them in the
+			// detected language, before loading any translation.json.
+			assert.ok(
+				lang.firstRun.yes?.length > 0,
+				`${lang.code}: firstRun.yes vacío`,
+			)
+			assert.ok(lang.firstRun.no?.length > 0, `${lang.code}: firstRun.no vacío`)
 		}
 	})
 })
@@ -81,9 +100,9 @@ describe('locales: paridad de keys', () => {
 })
 
 describe('locales: cobertura de las constantes de dominio', () => {
-	// Las keys de dominio no cambian con el idioma; lo que cambia es su label.
-	// Si se agrega una columna/formato/orden hay que traducirlo en TODOS los
-	// idiomas, y esto lo detecta.
+	// Domain keys don't change with the language; what changes is their label.
+	// Adding a column/format/order means translating it in EVERY language, and
+	// this catches it.
 	for (const lng of languages) {
 		it(`"${lng}" traduce todas las columnas, formatos y órdenes`, () => {
 			const flat = readTranslation(lng)
@@ -99,6 +118,18 @@ describe('locales: cobertura de las constantes de dominio', () => {
 			}
 			for (const order of SONG_ORDERS) {
 				assert.ok(songOrders[order], `${lng}: falta songOrders.${order}`)
+			}
+		})
+
+		it(`"${lng}" traduce todos los grupos y opciones de extracción`, () => {
+			const menu = readTranslation(lng).menu as Nested
+			const groups = menu.groups as Nested
+
+			for (const group of EXTRACTION_GROUPS) {
+				assert.ok(groups[group.key], `${lng}: falta menu.groups.${group.key}`)
+				for (const option of group.options) {
+					assert.ok(menu[option], `${lng}: falta menu.${option}`)
+				}
 			}
 		})
 	}
@@ -136,8 +167,8 @@ describe('resolveLocale', () => {
 	})
 
 	it('con un idioma inválido igual resuelve el mejor locale para mostrar el error', () => {
-		// El usuario tiene "es" guardado y pide "--lang=de": el error tiene que
-		// leerse en español, no en el fallback.
+		// The user has "es" saved and asks for "--lang=de": the error has to read
+		// in Spanish, not in the fallback.
 		assert.deepEqual(resolveLocale({ cli: 'de', saved: 'es' }), {
 			locale: 'es',
 			invalid: 'de',
@@ -152,7 +183,7 @@ describe('resolveLocale', () => {
 		assert.deepEqual(resolveLocale({ saved: 'de', system: 'jp' }), {
 			locale: fallbackLng,
 		})
-		// Guardado inválido pero sistema válido: gana el sistema.
+		// Invalid saved locale but valid system one: the system wins.
 		assert.deepEqual(resolveLocale({ saved: 'de', system: 'fr' }), {
 			locale: 'fr',
 		})
@@ -161,5 +192,36 @@ describe('resolveLocale', () => {
 	it('ignora fuentes vacías o en blanco', () => {
 		assert.equal(resolveLocale({ cli: '   ', system: 'es' }).locale, 'es')
 		assert.equal(resolveLocale({ env: '', saved: 'fr' }).locale, 'fr')
+	})
+})
+
+describe('localizeClack', () => {
+	const footer = (lines: string[]) => lines.map(stripVTControlCharacters)
+
+	it('en inglés deja el mismo texto que trae clack', async () => {
+		await initI18n('en')
+		assert.deepEqual(footer(SELECT_INSTRUCTIONS), [
+			'↑/↓ to navigate',
+			'Enter: confirm',
+		])
+		assert.deepEqual(footer(MULTISELECT_INSTRUCTIONS), [
+			'↑/↓ to navigate',
+			'Space: select',
+			'Enter: confirm',
+		])
+	})
+
+	it('cambiar de idioma reescribe los footers en el lugar', async () => {
+		await initI18n('es')
+		assert.deepEqual(footer(SELECT_INSTRUCTIONS), [
+			'↑/↓ para moverte',
+			'Enter: confirmar',
+		])
+		await initI18n('fr')
+		assert.deepEqual(footer(MULTISELECT_INSTRUCTIONS), [
+			'↑/↓ pour naviguer',
+			'Espace : cocher',
+			'Entrée : valider',
+		])
 	})
 })

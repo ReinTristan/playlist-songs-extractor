@@ -5,25 +5,36 @@
 	"menu": {
 		"title": " Playlist Extractor ",
 		"prompt": "Ajusta las opciones y luego extrae",
+		"extract": "▶ Extraer",
+		"extractionOptions": "Opciones de extracción",
+		"history": "Historial",
+		"settings": "Ajustes",
+		"quit": "Salir",
+		"bye": "¡Hasta luego!",
+		"groups": {
+			"source": "Origen",
+			"output": "Salida",
+			"songs": "Canciones"
+		},
 		"url": "URL de la playlist",
 		"max": "Límite de videos",
 		"formats": "Formatos de salida",
-		"expand": "Expandir álbumes/mixes",
 		"columns": "Columnas a guardar",
 		"columnOrder": "Orden de columnas",
-		"extra": "Opciones extra",
-		"language": "Idioma",
-		"extract": "▶ Extraer",
-		"quit": "Salir",
-		"bye": "¡Hasta luego!"
+		"expand": "Expandir álbumes/mixes",
+		"longVideo": "Umbral de álbum/mix",
+		"songOrder": "Orden de canciones",
+		"excludeUnavailable": "Excluir no disponibles",
+		"dedupe": "Quitar duplicados",
+		"videoTypeFilter": "Filtrar por tipo de video",
+		"genreFilter": "Filtrar por género",
+		"language": "Idioma"
 	},
 	"hints": {
 		"unset": "sin definir",
+		"noUrl": "sin URL",
 		"yes": "sí",
 		"no": "no",
-		"none": "ninguna activa",
-		"excludeUnavailable": "excluir no disp.",
-		"dedupe": "sin duplicados",
 		"longVideoMinutes": "≥ {{minutes}} min",
 		"noFilter": "sin filtro"
 	},
@@ -45,9 +56,8 @@
 		"moveUp": "↑ Subir",
 		"moveDown": "↓ Bajar",
 		"cancel": "Cancelar",
-		"extra": "Opciones extra (experimentales, desactivadas por defecto)",
-		"extraSongOrder": "Orden de canciones",
-		"extraExclude": "Excluir no disponibles",
+		"extractionOptions": "Opciones de extracción",
+		"settings": "Ajustes",
 		"back": "← Volver al menú principal",
 		"songOrder": "Orden de las canciones en el output",
 		"excludeUnavailable": "¿Excluir canciones no disponibles (privadas/borradas) del output?",
@@ -59,10 +69,8 @@
 		"videoTypeFilter": "Conservar solo estos tipos de video",
 		"genreFilter": "Conservar solo estos géneros (separados por coma, vacío = todos)",
 		"genreFilterPlaceholder": "dubstep, deep house",
-		"extraDedupe": "Quitar duplicados",
-		"extraLongVideo": "Umbral de álbum/mix",
-		"extraVideoTypeFilter": "Filtrar por tipo de video",
-		"extraGenreFilter": "Filtrar por género"
+		"yes": "Sí",
+		"no": "No"
 	},
 	"columns": {
 		"position": "Posición",
@@ -95,7 +103,6 @@
 		"shuffle": "Aleatorio"
 	},
 	"extract": {
-		"needUrl": "Primero define la URL de la playlist.",
 		"starting": "Extrayendo: {{url}}",
 		"failed": "Error en la extracción: {{message}}",
 		"invalidOption": "Selecciona una opción válida",
@@ -132,5 +139,12 @@
 		"album": "Álbum",
 		"mix": "Mix",
 		"unknown": "Desconocido"
+	},
+	"clack": {
+		"navigate": "{{keys}} para moverte",
+		"select": "{{key}} marcar",
+		"confirm": "{{key}} confirmar",
+		"enterKey": "Enter:",
+		"spaceKey": "Espacio:"
 	}
 }

@@ -25,15 +25,15 @@ options are persisted too. What decides is whether it changes the result.
 
 ## Acceptance criteria
 
-- [ ] AC1 — The main menu has, in this order: **▶ Extract** (first, green and
+- [x] AC1 — The main menu has, in this order: **▶ Extract** (first, green and
   bold, with the current URL or "no URL" as its hint, and where the cursor
   starts), **Extraction options**, **History**, **Settings**, **Quit**.
-- [ ] AC2 — **History** is defined but hidden: it doesn't render until
+- [x] AC2 — **History** is defined but hidden: it doesn't render until
   `extraction-history` enables it, and enabling it is a one-line change.
-- [ ] AC3 — Extract with no URL set asks for it right there (with the recent
+- [x] AC3 — Extract with no URL set asks for it right there (with the recent
   URLs picker) and then extracts; cancelling that prompt goes back to the main
   menu without extracting.
-- [ ] AC4 — **Extraction options** holds every option that exists today,
+- [x] AC4 — **Extraction options** holds every option that exists today,
   grouped:
   - *Source*: URL, video limit.
   - *Output*: formats, columns, column order.
@@ -45,21 +45,21 @@ options are persisted too. What decides is whether it changes the result.
   disabled rows with the same `○` as regular ones, so the name alone would barely
   stand out) with their options underneath. Each option keeps its current-value
   hint. The old "Extra options" submenu disappears (its entries move here).
-- [ ] AC4b — The Extraction options entry on the main menu has **no** hint.
-- [ ] AC4c — After editing an option, the Extraction options cursor stays on that
+- [x] AC4b — The Extraction options entry on the main menu has **no** hint.
+- [x] AC4c — After editing an option, the Extraction options cursor stays on that
   option instead of jumping back to the top: with 12 options in one list, changing
   several in a row would otherwise mean walking down every time. (manual)
-- [ ] AC5 — **Settings** holds Language (moved from the main menu). It's the
+- [x] AC5 — **Settings** holds Language (moved from the main menu). It's the
   place later specs add to (output folder, preferences, accessibility).
-- [ ] AC6 — Cancelling (Ctrl+C/Esc) inside a submenu goes back one level; on
+- [x] AC6 — Cancelling (Ctrl+C/Esc) inside a submenu goes back one level; on
   the main menu it quits, same as today. (manual)
-- [ ] AC7 — Nothing else changes: the config is still persisted on exit, the
+- [x] AC7 — Nothing else changes: the config is still persisted on exit, the
   browser session is still reused across extractions, and quick mode is
   untouched.
-- [ ] AC8 — The option lists of each menu are built by pure functions
+- [x] AC8 — The option lists of each menu are built by pure functions
   (config → options), unit-tested for: entry order, History hidden, and every
   option of AC4 present in its group.
-- [ ] AC9 — The new layout works the same in every locale. (manual)
+- [x] AC9 — The new layout works the same in every locale. (manual)
 
 ## Contract
 
@@ -93,7 +93,7 @@ Fixes that ride along with this release instead of waiting for their own patch.
 They don't change the menu; they're listed here so the release notes for v3.3.0
 have a single place to come from.
 
-- [ ] **Collaboration channels glued together** (`Sunnexoand EX-LYD` instead of
+- [x] **Collaboration channels glued together** (`Sunnexoand EX-LYD` instead of
   `Sunnexo; EX-LYD`). YouTube now renders each name in the metadata row as its
   own `<span>`, with the gap between them coming from CSS, not text; reading the
   row's `textContent` joined them with no space, so `resolveChannelNames` had no
@@ -106,7 +106,7 @@ have a single place to come from.
     `First and N more`, which becomes `First; N more`. The full list isn't in the
     playlist DOM; it comes complete with the YouTube Data API source (v4,
     `youtube-api-source`), so no extra scraping is added for it.
-- [ ] **Clack's own texts stayed in English** in every locale: the `Yes / No` of
+- [x] **Clack's own texts stayed in English** in every locale: the `Yes / No` of
   every confirm (the first-run language question included) and the key-help
   footers (`↑/↓ to navigate • Space: select • Enter: confirm`). Clack only lets
   Yes/No be set per call, so `cli.ts` wraps `p.confirm` in a `confirm` helper
@@ -128,11 +128,11 @@ have a single place to come from.
 
 ## Tasks
 
-- [ ] `locales/` — new, moved and removed keys in every language
-- [ ] `tests/` — `menu.test.ts` (AC1-AC5, AC8), `i18n.test.ts` coverage (AC9)
-- [ ] `src/types.ts` — `EXTRACTION_GROUPS`
-- [ ] `src/cli.ts` — option builders, submenus, `ensureUrl`
-- [ ] Manual run in a pty, in every locale (AC4c, AC6, AC9)
-- [ ] Real extraction, twice in one session (AC7: browser reuse), then `status: done`
+- [x] `locales/` — new, moved and removed keys in every language
+- [x] `tests/` — `menu.test.ts` (AC1-AC5, AC8), `i18n.test.ts` coverage (AC9)
+- [x] `src/types.ts` — `EXTRACTION_GROUPS`
+- [x] `src/cli.ts` — option builders, submenus, `ensureUrl`
+- [x] Manual run in a pty, in every locale (AC4c, AC6, AC9)
+- [x] Real extraction, twice in one session (AC7: browser reuse)
 - [ ] Docs — README, CLAUDE.md, `specs/decisions.md`
 - [ ] `package.json` → 3.3.0

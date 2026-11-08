@@ -1,32 +1,32 @@
 /**
- * Tipos y constantes compartidos del extractor de playlists.
+ * Shared types and constants of the playlist extractor.
  *
- * Aquí viven los tipos de dominio (videos, pistas, canciones, configuración)
- * y las constantes puras de datos: formatos/columnas de salida, keywords de
- * heurística y la gramática de timestamps. La lógica vive en `extractor.ts`.
+ * This is where the domain types (videos, tracks, songs, config) and the pure
+ * data constants live: output formats/columns, heuristic keywords and the
+ * timestamp grammar. The logic lives in `extractor.ts`.
  */
 
 // ---------------------------------------------------------------------------
-// Tipos
+// Types
 // ---------------------------------------------------------------------------
 
 /**
- * Un video tal como lo entrega una *fuente* (`sources/`): sólo señales crudas,
- * nada derivado. El canal viene sin resolver —los anchors por un lado, el texto
- * de la fila de metadata por el otro— porque elegir entre ambos es trabajo de
- * `resolveChannelNames`, que vive en la capa de procesamiento y no tiene acceso
- * al contexto del browser.
+ * A video as handed over by a *source* (`sources/`): raw signals only, nothing
+ * derived. The channel comes unresolved (the anchors on one side, the metadata
+ * row's text on the other) because choosing between them is the job of
+ * `resolveChannelNames`, which lives in the processing layer and has no access
+ * to the browser context.
  *
- * `availability` sí la decide la fuente, aunque parezca heurística: los títulos
- * literales "[Private video]"/"[Deleted video]" son un artefacto de cómo YouTube
- * renderiza la página, y la API los reporta por otro camino. Cada fuente lo
- * detecta a su manera y entrega la respuesta ya normalizada.
+ * `availability` is decided by the source, even if it looks like a heuristic:
+ * the literal "[Private video]"/"[Deleted video]" titles are an artifact of how
+ * YouTube renders the page, and the API reports it some other way. Each source
+ * detects it its own way and hands over the answer already normalized.
  */
 export interface RawPlaylistVideo {
-	index: number // posición 1-based dentro de la playlist
+	index: number // 1-based position within the playlist
 	rawTitle: string
-	chanAnchorTexts: string[] // textos de los anchors de canal (caso normal)
-	metaRowText: string // texto plano de metadata (videos de colaboración)
+	chanAnchorTexts: string[] // texts of the channel anchors (the normal case)
+	metaRowText: string // plain metadata text (collaboration videos)
 	videoId: string
 	url: string
 	thumbnail: string
@@ -35,22 +35,23 @@ export interface RawPlaylistVideo {
 }
 
 /**
- * Un video ya procesado por `toPlaylistVideos`: lo crudo (menos las señales sin
- * resolver) más lo que se deriva de ello. Todo lo que se agrega acá se calcula
- * igual venga de donde venga el video, así que no depende de la fuente.
+ * A video already processed by `toPlaylistVideos`: the raw data (minus the
+ * unresolved signals) plus what's derived from it. Everything added here is
+ * computed the same way wherever the video came from, so it doesn't depend on
+ * the source.
  */
 export interface PlaylistVideo
 	extends Omit<RawPlaylistVideo, 'chanAnchorTexts' | 'metaRowText'> {
-	channel: string[] // uno o más canales dueños (colaboraciones de YouTube)
+	channel: string[] // one or more owner channels (YouTube collaborations)
 	durationSeconds: number
 	videoType: VideoType
 	isCandidate: boolean
 }
 
 /**
- * Lo que devuelve cualquier fuente al pedirle una playlist. Es el único contrato
- * que comparten el scraping de hoy y la YouTube Data API del futuro: datos
- * crudos, sin interpretar.
+ * What any source returns when asked for a playlist. It's the only contract
+ * shared by today's scraping and the future YouTube Data API: raw,
+ * uninterpreted data.
  */
 export interface PlaylistPayload {
 	title: string
@@ -92,15 +93,15 @@ export interface Song {
 }
 
 /**
- * Formatos de archivo que puede generar la extracción (fuente única).
- * Los labels visibles viven en `locales/` (`formatLabel` en `i18n.ts`).
+ * File formats the extraction can produce (single source of truth).
+ * The visible labels live in `locales/` (`formatLabel` in `i18n.ts`).
  */
 export const FORMATS = ['json', 'csv', 'xlsx'] as const
 export type Format = (typeof FORMATS)[number]
 
 /**
- * Modos de orden de canciones (opción experimental, fuente única).
- * Los labels visibles viven en `locales/` (`songOrderLabel` en `i18n.ts`).
+ * Song order modes (experimental option, single source of truth).
+ * The visible labels live in `locales/` (`songOrderLabel` in `i18n.ts`).
  */
 export const SONG_ORDERS = [
 	'original',
@@ -111,24 +112,49 @@ export const SONG_ORDERS = [
 ] as const
 export type SongOrder = (typeof SONG_ORDERS)[number]
 
-/** Tipo de video tal como lo clasifica `classifyVideoType` (fuente única). */
+/** Video type as classified by `classifyVideoType` (single source of truth). */
 export const VIDEO_TYPES = ['single', 'album', 'mix', 'unknown'] as const
 export type VideoType = (typeof VIDEO_TYPES)[number]
 
-/** Configuración de una extracción, ajustable desde el CLI. */
+/**
+ * Groups of the "Extraction options" menu (single source of truth): everything
+ * that changes **what** ends up in the result. What only changes how the
+ * program behaves goes in Settings, not here.
+ * The visible labels live in `locales/` (`menu.groups.<key>`, `menu.<option>`).
+ */
+export const EXTRACTION_GROUPS = [
+	{ key: 'source', options: ['url', 'max'] },
+	{ key: 'output', options: ['formats', 'columns', 'columnOrder'] },
+	{
+		key: 'songs',
+		options: [
+			'expand',
+			'longVideo',
+			'songOrder',
+			'excludeUnavailable',
+			'dedupe',
+			'videoTypeFilter',
+			'genreFilter',
+		],
+	},
+] as const
+export type ExtractionOption =
+	(typeof EXTRACTION_GROUPS)[number]['options'][number]
+
+/** An extraction's config, adjustable from the CLI. */
 export interface ExtractConfig {
 	fullUrl: string
-	allVideos: boolean // true = procesar todos (ignora maxVideos)
-	maxVideos: number // límite entero ≥ 1, solo si allVideos es false
+	allVideos: boolean // true = process all of them (ignores maxVideos)
+	maxVideos: number // integer limit ≥ 1, only when allVideos is false
 	formats: Set<Format>
 	expandAlbums: boolean
-	columns: (keyof Song)[] // subconjunto de las keys de COLUMNS, en el orden de salida deseado
-	songOrder: SongOrder // default 'original' (opción extra, desactivada por defecto)
-	excludeUnavailable: boolean // default false (opción extra, desactivada por defecto)
-	longVideoSeconds: number // umbral de "video largo" (default LONG_VIDEO_SECONDS)
-	dedupe: boolean // default false: descarta canciones repetidas
-	videoTypeFilter: VideoType[] | null // null = sin filtrar
-	genreFilter: string[] | null // null = sin filtrar
+	columns: (keyof Song)[] // subset of the COLUMNS keys, in the desired output order
+	songOrder: SongOrder // default 'original' (extra option, off by default)
+	excludeUnavailable: boolean // default false (extra option, off by default)
+	longVideoSeconds: number // "long video" threshold (default LONG_VIDEO_SECONDS)
+	dedupe: boolean // default false: drops repeated songs
+	videoTypeFilter: VideoType[] | null // null = no filter
+	genreFilter: string[] | null // null = no filter
 	onProgress?: (message: string) => void // default: console.log
 }
 
@@ -148,13 +174,13 @@ export interface YoutubePageHTML extends Window {
 }
 
 // ---------------------------------------------------------------------------
-// Columnas de salida
+// Output columns
 // ---------------------------------------------------------------------------
 
 /**
- * Columnas de salida en su orden canónico. La `key` es la del dominio (`Song`)
- * y no cambia con el idioma; el header visible se resuelve con `columnHeader`
- * de `i18n.ts` contra `columns.<key>` en `locales/`.
+ * Output columns in their canonical order. The `key` is the domain one (`Song`)
+ * and doesn't change with the language; the visible header is resolved by
+ * `i18n.ts`'s `columnHeader` against `columns.<key>` in `locales/`.
  */
 export const COLUMNS: { key: keyof Song; width: number }[] = [
 	{ key: 'position', width: 10 },
@@ -178,10 +204,10 @@ export const COLUMNS: { key: keyof Song; width: number }[] = [
 export type Column = (typeof COLUMNS)[number]
 
 // ---------------------------------------------------------------------------
-// Constantes de heurística
+// Heuristic constants
 // ---------------------------------------------------------------------------
 
-/** Duración (s) a partir de la cual un video se considera candidato a álbum/mix. */
+/** Duration (s) from which a video is considered an album/mix candidate. */
 export const LONG_VIDEO_SECONDS = 18 * 60
 
 export const ALBUM_KEYWORDS = [
@@ -200,11 +226,11 @@ export const MIX_KEYWORDS = [
 	'continuous mix',
 	'podcast',
 	'live set',
-	// Nota: no incluir 'mix' suelto: sobre-clasifica temas de una sola canción
-	// como "(Extended Mix)", "(VIP Mix)", "(Original Mix)" (falsos DJ sets).
+	// Note: don't include a bare 'mix': it over-classifies single-song tracks
+	// like "(Extended Mix)", "(VIP Mix)", "(Original Mix)" (false DJ sets).
 ]
 
-/** Palabras que indican un tipo de mezcla (no la canción original). */
+/** Words that indicate a mix type (not the original song). */
 export const MIX_TYPE_KEYWORDS = [
 	'remix',
 	'bootleg',
@@ -231,7 +257,7 @@ export const MIX_TYPE_KEYWORDS = [
 	'nightcore',
 ]
 
-/** Lista blanca de géneros para detectarlos en corchetes/paréntesis del título. */
+/** Genre whitelist, to detect them in the title's brackets/parentheses. */
 export const GENRE_KEYWORDS = [
 	'drum & bass',
 	'drum and bass',
@@ -297,7 +323,7 @@ export const GENRE_KEYWORDS = [
 	'garage',
 ]
 
-/** Etiquetas de "ruido" a quitar del título. */
+/** "Noise" tags to strip from the title. */
 export const NOISE_PATTERNS: RegExp[] = [
 	/\(\s*official(?:\s+music)?(?:\s+lyric)?(?:\s+video|\s+audio)?\s*\)/gi,
 	/\[\s*official(?:\s+music)?(?:\s+lyric)?(?:\s+video|\s+audio)?\s*\]/gi,
@@ -307,88 +333,87 @@ export const NOISE_PATTERNS: RegExp[] = [
 ]
 
 // ---------------------------------------------------------------------------
-// Separadores
+// Separators
 // ---------------------------------------------------------------------------
 
 /**
- * Guiones aceptados como separador "artista - canción".
+ * Dashes accepted as the "artist - song" separator.
  *
- * No alcanza con el guion ASCII y los de tipografía (en dash, em dash): hay
- * fuentes/copy-paste que traen HYPHEN (U+2010), NON-BREAKING HYPHEN (U+2011),
- * FIGURE DASH (U+2012) o MINUS SIGN (U+2212), visualmente idénticos. Si falta
- * alguno, el título entero queda como nombre de canción sin artista.
+ * The ASCII hyphen and the typographic ones (en dash, em dash) aren't enough:
+ * some fonts/copy-pastes bring HYPHEN (U+2010), NON-BREAKING HYPHEN (U+2011),
+ * FIGURE DASH (U+2012) or MINUS SIGN (U+2212), visually identical. If one is
+ * missing, the whole title ends up as a song name with no artist.
  *
- * El `-` va escapado para poder interpolar esta cadena en cualquier posición
- * de un `[...]` sin que se lea como rango (`[.)-‐]` sería el rango
- * `)`–`‐`, que se traga dígitos y letras).
+ * The `-` is escaped so this string can be interpolated at any position of a
+ * `[...]` without being read as a range (`[.)-‐]` would be the range
+ * `)`–`‐`, which swallows digits and letters).
  */
 export const DASH_CHARS = '\\-\\u2010\\u2011\\u2012\\u2013\\u2014\\u2212'
 
-/** Clase de caracteres lista para interpolar en una regex. */
+/** Character class ready to interpolate into a regex. */
 export const DASH_CLASS = `[${DASH_CHARS}]`
 
-/** Numeración de una pista en una tracklist ("1.", "12)", "100 - "). */
+/** A track's numbering in a tracklist ("1.", "12)", "100 - "). */
 export const TRACK_NUMBER_PATTERN = `\\d{1,3}\\s*[.)${DASH_CHARS}]`
 
 // ---------------------------------------------------------------------------
-// Gramática de timestamps
+// Timestamp grammar
 // ---------------------------------------------------------------------------
 
-/** Gramática compartida de un timestamp "(h:)mm:ss" (fuente de las regex de abajo). */
+/** Shared grammar of a "(h:)mm:ss" timestamp (source of the regexes below). */
 export const TS_PATTERN = '(?:\\d{1,2}:)?\\d{1,2}:\\d{2}'
 
-/** Timestamp al inicio del texto de una pista, con paréntesis/guion opcionales. */
+/** Timestamp at the start of a track's text, with optional parentheses/dash. */
 export const LEADING_TS = new RegExp(
 	`^[([]?(${TS_PATTERN})[)\\]]?\\s*[${DASH_CHARS}.]?\\s*`,
 )
 
-/** Línea que abre con un rango de timestamps "ts - ts" (p. ej. "0:00 - 5:36 …"). */
+/** A line that opens with a "ts - ts" timestamp range (e.g. "0:00 - 5:36 …"). */
 export const RANGE_TS = new RegExp(
 	`^[([]?${TS_PATTERN}[)\\]]?\\s*${DASH_CLASS}\\s*[([]?${TS_PATTERN}[)\\]]?`,
 )
 
-/** Primer timestamp en cualquier parte de la línea. */
+/** First timestamp anywhere in the line. */
 export const ANY_TS = new RegExp(`(${TS_PATTERN})`)
 
-/** Timestamp al inicio de una pista numerada, delimitado. */
+/** Timestamp at the start of a numbered track, delimited. */
 export const NUM_LEAD_TS = new RegExp(
 	`^\\s*[([]?(${TS_PATTERN})[)\\]]?(?=\\s|${DASH_CLASS}|$)`,
 )
 
-/** Timestamp al final de una pista numerada. */
+/** Timestamp at the end of a numbered track. */
 export const NUM_TAIL_TS = new RegExp(`\\s*[([]?(${TS_PATTERN})[)\\]]?\\s*$`)
 
 // ---------------------------------------------------------------------------
-// DOM de YouTube (compartido con debug-dom.ts)
+// YouTube DOM (shared with debug-dom.ts)
 // ---------------------------------------------------------------------------
 
 /**
- * Selectores del scraper. Viven acá —y no en `extractor.ts`— porque
- * `debug-dom.ts` existe justamente para diagnosticar cuándo YouTube cambia su
- * markup: si cada archivo tuviera su propia copia, el script de debug podría
- * quedar mirando selectores viejos y reportar un DOM que el scraper real ya no
- * usa.
+ * The scraper's selectors. They live here (and not in `sources/scrape.ts`)
+ * because `debug-dom.ts` exists precisely to diagnose when YouTube changes its
+ * markup: if each file had its own copy, the debug script could end up looking
+ * at old selectors and report a DOM the real scraper no longer uses.
  *
- * Como se usan dentro de `page.evaluate` (contexto del browser, sin acceso a
- * los imports de Node), hay que pasarlos explícitamente como argumento.
+ * Since they're used inside `page.evaluate` (browser context, with no access to
+ * Node imports), they have to be passed explicitly as an argument.
  */
 export const YT_SELECTORS = {
-	/** Variante Polymer vieja: contenedor estricto del contenido real. */
+	/** Old Polymer variant: strict container of the real content. */
 	listRenderer: 'ytd-playlist-video-list-renderer',
-	/** Secciones de la página; la primera es la playlist, las demás recomendados. */
+	/** The page's sections; the first is the playlist, the rest are recommendations. */
 	sections: 'yt-item-section-renderer, ytd-item-section-renderer',
 	/**
-	 * Las mismas secciones en orden de preferencia. La variante nueva gana sobre
-	 * la vieja aunque aparezca después en el documento, que es lo que hace un
-	 * `querySelector(a) || querySelector(b)` y no un selector con coma.
+	 * The same sections in order of preference. The new variant wins over the
+	 * old one even if it appears later in the document, which is what a
+	 * `querySelector(a) || querySelector(b)` does and a comma selector doesn't.
 	 */
 	sectionsByPreference: [
 		'yt-item-section-renderer',
 		'ytd-item-section-renderer',
 	],
-	/** Un ítem de playlist, en cualquiera de las dos variantes de UI. */
+	/** A playlist item, in either of the two UI variants. */
 	items: 'yt-lockup-view-model, ytd-playlist-video-renderer',
-	/** Link al video dentro de un ítem (trae título y videoId). */
+	/** Link to the video inside an item (carries the title and videoId). */
 	itemTitleLink: 'h3 a',
 	header: 'yt-page-header-renderer, ytd-playlist-header-renderer',
 	title:
@@ -400,7 +425,7 @@ export const YT_SELECTORS = {
 	description: '#description-inline-expander, #description',
 } as const
 
-/** Scopes en orden de preferencia (el estricto primero). */
+/** Scopes in order of preference (the strict one first). */
 export const YT_SCOPE_SELECTORS = [
 	YT_SELECTORS.listRenderer,
 	'yt-item-section-renderer',
@@ -408,45 +433,45 @@ export const YT_SCOPE_SELECTORS = [
 ]
 
 /**
- * Detecta un `href` de canal. Se guarda como *string* y no como RegExp porque
- * tiene que cruzar a `page.evaluate`, que serializa sus argumentos a JSON.
+ * Detects a channel `href`. Stored as a *string* and not as a RegExp because it
+ * has to cross into `page.evaluate`, which serializes its arguments to JSON.
  */
 export const CHANNEL_HREF_SOURCE = '/(@|channel/|c/|user/)'
 
 export const CHANNEL_HREF_RE = new RegExp(CHANNEL_HREF_SOURCE)
 
-/** UA de Chrome desktop: YouTube sirve markup distinto a un headless sin UA. */
+/** Desktop Chrome UA: YouTube serves different markup to a headless with no UA. */
 export const DESKTOP_USER_AGENT =
 	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
 /**
- * Títulos de playlist tan genéricos que solos no identifican la carpeta de
- * salida: en esos casos alcanza con el nombre del canal.
+ * Playlist titles so generic that on their own they don't identify the output
+ * folder: in those cases the channel name is enough.
  */
 export const GENERIC_PLAYLIST_TITLES =
 	/^(videos|playlist|mix|favoritos|favorites)$/i
 
 // ---------------------------------------------------------------------------
-// Tiempos del scraper
+// Scraper timings
 // ---------------------------------------------------------------------------
 
-/** Timeout de navegación a la página de la playlist. */
+/** Navigation timeout for the playlist page. */
 export const PLAYLIST_NAV_TIMEOUT_MS = 60_000
-/** Timeout de navegación a la página de un video (tracklist). */
+/** Navigation timeout for a video's page (tracklist). */
 export const VIDEO_NAV_TIMEOUT_MS = 45_000
-/** Espera máxima a que aparezca el primer ítem de la playlist. */
+/** Maximum wait for the playlist's first item to appear. */
 export const CONTENT_TIMEOUT_MS = 30_000
-/** Espera a que hidrate la descripción del video antes de leerla. */
+/** Wait for the video description to hydrate before reading it. */
 export const DESCRIPTION_SETTLE_MS = 1_200
-/** Timeout del click al botón de consentimiento de cookies. */
+/** Timeout of the click on the cookie consent button. */
 export const CONSENT_CLICK_TIMEOUT_MS = 5_000
-/** Espera tras aceptar el consentimiento, mientras YouTube recarga la vista. */
+/** Wait after accepting the consent, while YouTube reloads the view. */
 export const CONSENT_SETTLE_MS = 1_000
-/** Iteraciones máximas del scroll de carga perezosa (corta un scroll infinito). */
+/** Maximum iterations of the lazy-load scroll (stops an infinite scroll). */
 export const SCROLL_MAX_ITERATIONS = 400
-/** Rondas seguidas sin ítems nuevos para dar por terminado el scroll. */
+/** Consecutive rounds with no new items to consider the scroll done. */
 export const SCROLL_STABLE_ROUNDS = 3
-/** Pausa entre scrolls para que YouTube alcance a renderizar el lote nuevo. */
+/** Pause between scrolls so YouTube manages to render the new batch. */
 export const SCROLL_SLEEP_MS = 700
-/** Pausa entre videos al pedir tracklists: ser educado con el servidor. */
+/** Pause between videos when fetching tracklists: being polite to the server. */
 export const POLITE_SLEEP_MS = 600
