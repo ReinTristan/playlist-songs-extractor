@@ -31,7 +31,7 @@ the same idea from being re-evaluated from scratch a year later.
 
 | Spec | Status |
 | --- | --- |
-| [Menu restructure: a short main menu, everything else in submenus](menu-restructure.md) | draft (v3.3) |
+| [Menu restructure: a short main menu, everything else in submenus](menu-restructure.md) | approved (v3.3) |
 | [Extraction presets](extraction-presets.md) | draft (v3.4) |
 | [CLI essentials: help, version, output dir, preferences, missing browser](cli-essentials.md) | draft (v3.5) |
 | [Extraction history](extraction-history.md) | draft (v3.6) |

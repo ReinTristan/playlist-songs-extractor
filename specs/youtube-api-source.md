@@ -56,6 +56,14 @@ Known so far:
   `Song` columns? If so: what do scraper runs put in them?
 - Behaviour on quota exhaustion / invalid key: hard error or fall back to
   scraping?
+- Does the API expose **every** channel of a collaboration video, or only the
+  primary owner (`snippet.channelId`/`channelTitle` are single values)? The
+  scraper can't fill this in either: with 3+ channels the playlist DOM only shows
+  `First and N more`, which v3.3.0 exports as `First; N more` on the assumption
+  that v4 completes it (see [menu-restructure](menu-restructure.md), "Bug fixes
+  shipped in this version"). If the API doesn't have it, decide whether that
+  limitation stays, or what else would cover it (opening the avatar-stack
+  dialog, the watch page…).
 
 ## Tasks
 
