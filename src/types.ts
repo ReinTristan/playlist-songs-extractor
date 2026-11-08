@@ -394,6 +394,8 @@ export const YT_SELECTORS = {
 	title:
 		'yt-dynamic-sizing-formatted-string, #title yt-formatted-string, h1 .ytPageHeaderViewModelTitle',
 	metadataRow: '.ytContentMetadataViewModelMetadataRow',
+	/** Each text piece of a metadata row (a channel name, "and X"...). */
+	metadataText: '.ytContentMetadataViewModelMetadataText',
 	durationBadge: 'yt-thumbnail-badge-view-model',
 	description: '#description-inline-expander, #description',
 } as const

@@ -1,18 +1,19 @@
 /**
- * Fuente de datos: scraping de YouTube con Playwright.
+ * Data source: scraping YouTube with Playwright.
  *
- * Este módulo es la mitad "habla con YouTube" del proyecto: navega, pelea con el
- * DOM y devuelve datos **crudos** (`PlaylistPayload`, la descripción de un video
- * como texto). No interpreta nada — clasificar, parsear títulos y expandir
- * tracklists es trabajo de `extractor.ts`, que no sabe de dónde salieron los
- * datos.
+ * This module is the "talks to YouTube" half of the project: it navigates,
+ * fights the DOM and returns **raw** data (`PlaylistPayload`, a video's
+ * description as text). It interprets nothing — classifying, parsing titles and
+ * expanding tracklists is the job of `extractor.ts`, which doesn't know where
+ * the data came from.
  *
- * Esa frontera existe para que una segunda fuente (la YouTube Data API v3, ver
- * specs/youtube-api-source.md) pueda entrar como hermana de este archivo
- * sin tocar el extractor.
+ * That boundary exists so a second source (the YouTube Data API v3, see
+ * specs/youtube-api-source.md) can come in as a sibling of this file without
+ * touching the extractor.
  *
- * Los selectores viven en `types.ts` y no acá: los comparte `debug-dom.ts`, que
- * existe justamente para diagnosticar cuándo YouTube cambia su markup.
+ * The selectors live in `types.ts`, not here: they're shared with
+ * `debug-dom.ts`, which exists precisely to diagnose when YouTube changes its
+ * markup.
  */
 
 import { type Browser, chromium, type Page } from 'playwright'
@@ -38,7 +39,7 @@ import {
 import { sleep } from '../utils.ts'
 
 // ---------------------------------------------------------------------------
-// Pasos del scraping de una playlist
+// Steps of scraping a playlist
 // ---------------------------------------------------------------------------
 
 async function dismissConsent(page: Page): Promise<void> {
@@ -63,29 +64,29 @@ async function dismissConsent(page: Page): Promise<void> {
 			}
 		}
 	} catch {
-		/* sin diálogo de consentimiento */
+		/* no consent dialog */
 	}
 }
 
 /**
- * Decide dentro de qué contenedor está el contenido real de la playlist, y
- * devuelve **un** selector: el mismo que se usa para scrollear y para leer, así
- * no puede pasar que se cargue un scope y se lea otro.
+ * Decides which container holds the playlist's real content, and returns
+ * **one** selector: the same one used to scroll and to read, so it can't happen
+ * that one scope is loaded and another one is read.
  *
- * La página agrupa su contenido en varios "item-section-renderer": el primero
- * suele ser la playlist en sí, los siguientes son secciones de videos/playlists
- * recomendados que YouTube agrega debajo. Pero en playlists cortas, YouTube
- * puede meter esas sugerencias como hermanas del contenido real dentro del MISMO
- * section (variante Polymer vieja) — ahí, el contenido real está anidado en
- * ytd-playlist-video-list-renderer, que las sugerencias no comparten. Si ese
- * contenedor existe, se prioriza sobre el heurístico de "primer section".
+ * The page groups its content into several "item-section-renderer"s: the first
+ * one is usually the playlist itself, the next ones are sections of recommended
+ * videos/playlists YouTube adds below. But on short playlists, YouTube can put
+ * those suggestions as siblings of the real content inside the SAME section
+ * (old Polymer variant) — there, the real content is nested in
+ * ytd-playlist-video-list-renderer, which the suggestions don't share. If that
+ * container exists, it takes priority over the "first section" heuristic.
  */
 async function resolveScope(page: Page): Promise<string> {
-	// Esperar el contenido ANTES de decidir: `locator.count()` no auto-espera, y
-	// `domcontentloaded` dispara antes de que YouTube hidrate sus custom
-	// elements. Preguntando primero, en una máquina lenta el list-renderer
-	// todavía no existe y se caía al scope permisivo — justo el que puede
-	// arrastrar videos recomendados.
+	// Wait for the content BEFORE deciding: `locator.count()` doesn't auto-wait,
+	// and `domcontentloaded` fires before YouTube hydrates its custom elements.
+	// Asking first, on a slow machine the list-renderer doesn't exist yet and it
+	// fell back to the permissive scope — exactly the one that can drag in
+	// recommended videos.
 	await page
 		.waitForSelector(
 			YT_SCOPE_SELECTORS.map((s) => `${s} ${YT_SELECTORS.items}`).join(', '),
@@ -96,14 +97,14 @@ async function resolveScope(page: Page): Promise<string> {
 	for (const selector of YT_SCOPE_SELECTORS) {
 		if ((await page.locator(selector).count()) > 0) return selector
 	}
-	// Ningún scope conocido (cambio de markup): `readRawVideos` cae al documento
-	// entero antes que devolver una playlist vacía.
+	// No known scope (markup change): `readRawVideos` falls back to the whole
+	// document rather than returning an empty playlist.
 	return YT_SELECTORS.listRenderer
 }
 
 /**
- * Scroll incremental hasta que el número de items se estabiliza (carga
- * perezosa), o hasta alcanzar el límite pedido. `limit === null` = sin límite.
+ * Incremental scroll until the item count stabilizes (lazy loading), or until
+ * the requested limit is reached. `limit === null` = no limit.
  */
 async function scrollUntilStable(
 	page: Page,
@@ -130,13 +131,13 @@ async function scrollUntilStable(
 	}
 }
 
-/** Título y canal de la playlist, leídos del header. */
+/** The playlist's title and channel, read from the header. */
 async function readPlaylistMetadata(
 	page: Page,
 ): Promise<{ title: string; channel: string }> {
-	// Los selectores viajan como argumento: dentro de page.evaluate no existen
-	// los imports de Node, y la regex tiene que cruzar como string porque los
-	// argumentos se serializan a JSON.
+	// The selectors travel as an argument: Node imports don't exist inside
+	// page.evaluate, and the regex has to cross as a string because the
+	// arguments are serialized to JSON.
 	return page.evaluate(
 		({ sel, channelHref }) => {
 			const w = window as unknown as YoutubePageHTML
@@ -148,7 +149,7 @@ async function readPlaylistMetadata(
 				(h1 ? (h1 as HTMLElement).innerText : '') ||
 				document.title.replace(/\s*-\s*YouTube\s*$/, '')
 
-			// Canal: primer enlace a un canal dentro del header de la playlist.
+			// Channel: the first link to a channel inside the playlist header.
 			const channelHrefRe = new RegExp(channelHref)
 			const header = document.querySelector(sel.header)
 			const ownerAnchor = header
@@ -166,16 +167,17 @@ async function readPlaylistMetadata(
 	)
 }
 
-/** Los items de la playlist, crudos: sin derivar duración, tipo ni canal. */
+/** The playlist's items, raw: no derived duration, type or channel. */
 async function readRawVideos(
 	page: Page,
 	scope: string,
 ): Promise<RawPlaylistVideo[]> {
 	return page.evaluate(
 		({ sel, channelHref, scope }) => {
-			// El scope ya lo decidió `resolveScope` en Node; acá sólo se resuelve a
-			// un elemento. Si no matchea nada (cambio de markup de YouTube), se cae
-			// al documento completo para no romper la extracción.
+			// `resolveScope` already decided the scope in Node; here it's only
+			// resolved to an element. If it matches nothing (a YouTube markup
+			// change), it falls back to the whole document so the extraction
+			// doesn't break.
 			const channelHrefRe = new RegExp(channelHref)
 			const root = document.querySelector(scope) ?? document
 			const items = Array.from(root.querySelectorAll(sel.items))
@@ -193,14 +195,14 @@ async function readRawVideos(
 				try {
 					videoId = new URL(href).searchParams.get('v') || ''
 				} catch {
-					/* href no parseable */
+					/* unparseable href */
 				}
-				// Canal(es): en videos normales hay un <a> al canal; en videos de
-				// "colaboración" (varios canales dueños) YouTube no pone ningún
-				// anchor y en cambio escribe los nombres como texto plano (p. ej.
-				// "Alan Walker and Au/Ra") en la primera fila de metadata. Se
-				// capturan ambas señales crudas acá; resolveChannelNames (función
-				// pura de Node) decide cuál usar y cómo separarlas.
+				// Channel(s): normal videos have an <a> to the channel; in
+				// "collaboration" videos (several owner channels) YouTube puts no
+				// anchor and instead writes the names as plain text (e.g.
+				// "Alan Walker and Au/Ra") in the first metadata row. Both raw
+				// signals are captured here; resolveChannelNames (a pure Node
+				// function) decides which one to use and how to split them.
 				const chanAnchorTexts = Array.from(item.querySelectorAll('a'))
 					.filter((a) =>
 						channelHrefRe.test(
@@ -209,9 +211,25 @@ async function readRawVideos(
 					)
 					.map((a) => (a as HTMLAnchorElement).innerText.trim())
 					.filter(Boolean)
+				// Each name lives in its own <span> ("Sunnexo" · "and EX-LYD") and
+				// the gap between them is CSS, not text: the row's textContent glues
+				// them ("Sunnexoand EX-LYD") and there's no "and" left to split on.
+				// So the spans are read one by one and joined with a space; if the
+				// markup changes and there are no spans, it falls back to the whole
+				// row's text.
+				const metaRow = item.querySelector(sel.metadataRow)
+				const metaParts = Array.from(
+					metaRow?.querySelectorAll(sel.metadataText) || [],
+				)
+					.map((s) => (s.textContent || '').trim())
+					.filter(Boolean)
 				const metaRowText = (
-					item.querySelector(sel.metadataRow)?.textContent || ''
-				).trim()
+					metaParts.length > 0
+						? metaParts.join(' ')
+						: metaRow?.textContent || ''
+				)
+					.replace(/\s+/g, ' ')
+					.trim()
 				const badges = Array.from(item.querySelectorAll(sel.durationBadge)).map(
 					(b) => (b as HTMLElement).innerText.trim(),
 				)
@@ -245,23 +263,23 @@ async function readRawVideos(
 }
 
 // ---------------------------------------------------------------------------
-// Sesión
+// Session
 // ---------------------------------------------------------------------------
 
 /**
- * Una sesión de scraping abierta: un Chromium con una pestaña viva, sobre la que
- * se pueden hacer varias consultas. El menú interactivo abre una sola y la reusa
- * entre extracciones, así el navegador se lanza (y el consentimiento de cookies
- * se descarta) una única vez.
+ * An open scraping session: a Chromium with one live tab, on which several
+ * queries can be made. The interactive menu opens just one and reuses it across
+ * extractions, so the browser is launched (and the cookie consent dismissed)
+ * only once.
  *
- * Es el tipo concreto de *esta* fuente, no una interfaz abstracta: cuando exista
- * la fuente de la API se verá qué firma comparten de verdad. Hoy inventarla
- * sería diseñar contra una implementación imaginaria.
+ * It's the concrete type of *this* source, not an abstract interface: once the
+ * API source exists we'll see which signature they really share. Inventing it
+ * today would be designing against an imaginary implementation.
  */
 export interface ScrapeSession {
-	/** `limit === null` = todos los videos de la playlist. */
+	/** `limit === null` = every video in the playlist. */
 	fetchPlaylist(url: string, limit: number | null): Promise<PlaylistPayload>
-	/** Descripción cruda de un video; la parsea el extractor. */
+	/** A video's raw description; the extractor parses it. */
 	readDescription(videoId: string): Promise<string>
 	close(): Promise<void>
 }
@@ -283,9 +301,9 @@ export async function openScrapeSession(): Promise<ScrapeSession> {
 					waitUntil: 'domcontentloaded',
 					timeout: PLAYLIST_NAV_TIMEOUT_MS,
 				})
-				// Playwright no tira error ante un 4xx/5xx: sin este chequeo, una
-				// playlist borrada/privada se "scrapea" bien, encuentra 0 videos y
-				// escribe una carpeta de salida vacía como si todo hubiera salido bien.
+				// Playwright doesn't throw on a 4xx/5xx: without this check, a
+				// deleted/private playlist "scrapes" fine, finds 0 videos and writes
+				// an empty output folder as if everything had gone well.
 				if (!response?.ok()) {
 					throw new Error(
 						t('errors.pageStatus', { status: response?.status() ?? 0, url }),
@@ -312,8 +330,8 @@ export async function openScrapeSession(): Promise<ScrapeSession> {
 					waitUntil: 'domcontentloaded',
 					timeout: VIDEO_NAV_TIMEOUT_MS,
 				})
-				// Mismo motivo que en fetchPlaylist: un video caído devolvería una
-				// descripción vacía indistinguible de un video sin tracklist.
+				// Same reason as in fetchPlaylist: a dead video would return an empty
+				// description, indistinguishable from a video without a tracklist.
 				if (!response?.ok()) {
 					throw new Error(
 						t('errors.pageStatus', { status: response?.status() ?? 0, url }),
@@ -335,8 +353,8 @@ export async function openScrapeSession(): Promise<ScrapeSession> {
 			},
 		}
 	} catch (err) {
-		// Si algo falla después de lanzar Chromium, no queda un proceso huérfano:
-		// quien llamó nunca llegó a recibir la sesión, así que no puede cerrarla.
+		// If something fails after launching Chromium, no orphan process is left:
+		// the caller never got the session, so it can't close it.
 		await browser?.close()
 		throw err
 	}
